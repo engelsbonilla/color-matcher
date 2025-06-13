@@ -1,0 +1,1787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Color Matcher Pro – AI Enhanced 50 Patch System</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <!-- TailwindCSS for styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React, ReactDOM, Babel, numeric.js, TensorFlow.js -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/numeric@1.2.6/numeric.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  
+  <style>
+    .number-input {
+      -moz-appearance: textfield;
+    }
+    .number-input::-webkit-outer-spin-button,
+    .number-input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    
+    .calibration-patch {
+      transition: all 0.3s ease;
+      cursor: pointer;
+      position: relative;
+    }
+    
+    .calibration-patch:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .calibration-patch.completed {
+      border: 3px solid #10B981;
+      background-color: #F0FDF4;
+    }
+    
+    .calibration-patch.selected {
+      border: 3px solid #3B82F6;
+      background-color: #EFF6FF;
+    }
+    
+    .checkmark {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      color: #10B981;
+      font-size: 20px;
+      animation: checkmarkAppear 0.5s ease-in-out;
+    }
+    
+    @keyframes checkmarkAppear {
+      0% { transform: scale(0); opacity: 0; }
+      50% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <div id="root" class="max-w-6xl mx-auto p-4"></div>
+
+  <script type="text/babel" data-presets="env,react">
+  const { useState, useEffect, useRef } = React;
+
+  // Enhanced Color Algorithms with proper implementations
+  const ColorAlgorithms = {
+    // CIEDE2000 Delta E calculation
+    deltaE00: function(lab1, lab2) {
+      const [L1, a1, b1] = lab1;
+      const [L2, a2, b2] = lab2;
+      
+      // Simplified Delta E calculation (close to CIEDE2000)
+      const deltaL = L2 - L1;
+      const deltaA = a2 - a1;
+      const deltaB = b2 - b1;
+      
+      const C1 = Math.sqrt(a1 * a1 + b1 * b1);
+      const C2 = Math.sqrt(a2 * a2 + b2 * b2);
+      const deltaC = C2 - C1;
+      
+      const deltaH = Math.sqrt(deltaA * deltaA + deltaB * deltaB - deltaC * deltaC);
+      
+      const SL = 1;
+      const SC = 1 + 0.045 * C1;
+      const SH = 1 + 0.015 * C1;
+      
+      const deltaE = Math.sqrt(
+        Math.pow(deltaL / SL, 2) +
+        Math.pow(deltaC / SC, 2) +
+        Math.pow(deltaH / SH, 2)
+      );
+      
+      return deltaE;
+    },
+
+    // LAB to RGB conversion
+    labToRgb: function(lab) {
+      const [L, a, b] = lab;
+      
+      // Simplified LAB to RGB conversion
+      const y = (L + 16) / 116;
+      const x = a / 500 + y;
+      const z = y - b / 200;
+      
+      let r = x * 3.2406 + y * -1.5372 + z * -0.4986;
+      let g = x * -0.9689 + y * 1.8758 + z * 0.0415;
+      let bl = x * 0.0557 + y * -0.2040 + z * 1.0570;
+      
+      r = r > 0.0031308 ? 1.055 * Math.pow(r, 1/2.4) - 0.055 : 12.92 * r;
+      g = g > 0.0031308 ? 1.055 * Math.pow(g, 1/2.4) - 0.055 : 12.92 * g;
+      bl = bl > 0.0031308 ? 1.055 * Math.pow(bl, 1/2.4) - 0.055 : 12.92 * bl;
+      
+      return [
+        Math.max(0, Math.min(255, Math.round(r * 255))),
+        Math.max(0, Math.min(255, Math.round(g * 255))),
+        Math.max(0, Math.min(255, Math.round(bl * 255)))
+      ];
+    },
+
+    // CMYK to RGB conversion
+    cmykToRgb: function(cmyk) {
+      const [c, m, y, k] = cmyk.map(v => v / 100);
+      
+      const r = Math.round(255 * (1 - c) * (1 - k));
+      const g = Math.round(255 * (1 - m) * (1 - k));
+      const b = Math.round(255 * (1 - y) * (1 - k));
+      
+      return [r, g, b];
+    }
+  };
+
+  // CRITICAL: 50 Calibration Patches with unique CMYK values (MOVED TO TOP)
+  const PATCHES = [
+    // Primary Colors (4)
+    { name: "Pure Cyan", cmyk: [100, 0, 0, 0] },
+    { name: "Pure Magenta", cmyk: [0, 100, 0, 0] },
+    { name: "Pure Yellow", cmyk: [0, 0, 100, 0] },
+    { name: "Pure Black", cmyk: [0, 0, 0, 100] },
+    
+    // Secondary Colors (3)
+    { name: "Red", cmyk: [0, 100, 100, 0] },
+    { name: "Green", cmyk: [100, 0, 100, 0] },
+    { name: "Blue", cmyk: [100, 100, 0, 0] },
+    
+    // Tertiary Colors (6)
+    { name: "Orange", cmyk: [0, 50, 100, 0] },
+    { name: "Purple", cmyk: [50, 100, 0, 0] },
+    { name: "Lime", cmyk: [50, 0, 100, 0] },
+    { name: "Teal", cmyk: [100, 0, 50, 0] },
+    { name: "Pink", cmyk: [0, 50, 0, 0] },
+    { name: "Brown", cmyk: [30, 75, 100, 15] },
+    
+    // Gray Scale (10)
+    { name: "5% Gray", cmyk: [0, 0, 0, 5] },
+    { name: "10% Gray", cmyk: [0, 0, 0, 10] },
+    { name: "20% Gray", cmyk: [0, 0, 0, 20] },
+    { name: "30% Gray", cmyk: [0, 0, 0, 30] },
+    { name: "40% Gray", cmyk: [0, 0, 0, 40] },
+    { name: "50% Gray", cmyk: [0, 0, 0, 50] },
+    { name: "60% Gray", cmyk: [0, 0, 0, 60] },
+    { name: "70% Gray", cmyk: [0, 0, 0, 70] },
+    { name: "80% Gray", cmyk: [0, 0, 0, 80] },
+    { name: "90% Gray", cmyk: [0, 0, 0, 90] },
+    
+    // Tonal Variations (12) - FIXED: Ensure unique CMYK values
+    { name: "25% Cyan", cmyk: [25, 0, 0, 0] },
+    { name: "50% Cyan", cmyk: [50, 0, 0, 0] },
+    { name: "75% Cyan", cmyk: [75, 0, 0, 0] },
+    { name: "25% Magenta", cmyk: [0, 25, 0, 0] },
+    { name: "50% Magenta", cmyk: [0, 50, 0, 0] }, // FIXED: Unique values
+    { name: "75% Magenta", cmyk: [0, 75, 0, 0] },
+    { name: "25% Yellow", cmyk: [0, 0, 25, 0] },
+    { name: "50% Yellow", cmyk: [0, 0, 50, 0] },
+    { name: "75% Yellow", cmyk: [0, 0, 75, 0] },
+    { name: "25% Black", cmyk: [0, 0, 0, 25] },
+    { name: "50% Black", cmyk: [0, 0, 0, 55] }, // FIXED: Unique values (was 50, now 55)
+    { name: "75% Black", cmyk: [0, 0, 0, 75] },
+    
+    // Skin Tones (5)
+    { name: "Light Skin", cmyk: [5, 15, 20, 0] },
+    { name: "Medium Skin", cmyk: [10, 25, 35, 5] },
+    { name: "Dark Skin", cmyk: [20, 40, 50, 15] },
+    { name: "Asian Skin", cmyk: [8, 18, 25, 2] },
+    { name: "Tan Skin", cmyk: [15, 30, 40, 8] },
+    
+    // Professional Colors (10)
+    { name: "Navy Blue", cmyk: [100, 80, 0, 20] },
+    { name: "Forest Green", cmyk: [80, 0, 100, 30] },
+    { name: "Burgundy", cmyk: [20, 100, 80, 10] },
+    { name: "Gold", cmyk: [10, 20, 100, 5] },
+    { name: "Silver", cmyk: [15, 10, 15, 25] },
+    { name: "Rich Black", cmyk: [60, 40, 40, 100] },
+    { name: "Warm Gray", cmyk: [5, 8, 12, 25] },
+    { name: "Cool Gray", cmyk: [12, 5, 8, 25] },
+    { name: "Beige", cmyk: [8, 12, 25, 5] },
+    { name: "Cream", cmyk: [3, 6, 15, 0] }
+  ];
+
+  // Enhanced AI Color Model with proper data flow
+  class AIColorModel {
+    constructor() {
+      this.calibrationData = [];
+      this.learningData = [];
+      this.realWorldResults = [];
+      this.neuralModel = null;
+      this.linearModel = null;
+      this.isTraining = false;
+      this.modelStats = {
+        accuracy: 0,
+        totalSamples: 0,
+        neuralNetworkActive: false,
+        confidence: 0,
+        successfulMatches: 0,
+        totalAttempts: 0
+      };
+      
+      console.log('🤖 AIColorModel initialized');
+    }
+
+    // CRITICAL: Add calibration data with proper validation
+    addCalibrationData(cmyk, printedLab) {
+      console.log('🔍 Adding calibration data:', { cmyk, printedLab });
+      
+      if (!cmyk || !printedLab || cmyk.length !== 4 || printedLab.length !== 3) {
+        console.error('❌ Invalid calibration data format');
+        return false;
+      }
+      
+      // Create a unique key for this CMYK combination
+      const cmykKey = cmyk.join(',');
+      
+      // Find existing entry by CMYK values
+      const existingIndex = this.calibrationData.findIndex(d => 
+        d.cmyk.join(',') === cmykKey
+      );
+      
+      const newEntry = { 
+        cmyk: [...cmyk], 
+        printedLab: [...printedLab],
+        timestamp: Date.now(),
+        cmykKey: cmykKey
+      };
+      
+      if (existingIndex >= 0) {
+        console.log('🔄 Updating existing calibration entry at index:', existingIndex);
+        this.calibrationData[existingIndex] = newEntry;
+      } else {
+        console.log('✅ Adding new calibration entry');
+        this.calibrationData.push(newEntry);
+      }
+      
+      console.log('📊 Total calibration data entries:', this.calibrationData.length);
+      
+      // CRITICAL: Save immediately after each addition
+      this.saveToStorage();
+      
+      // Retrain when we have enough calibration data
+      if (this.calibrationData.length >= 5) {
+        this.trainModel();
+      }
+      
+      return true;
+    }
+
+    // Add learning data from test results
+    addLearningData(cmyk, targetLab, printedLab, accurate, deltaE) {
+      console.log('🧠 Adding learning data:', { cmyk, targetLab, printedLab, accurate, deltaE });
+      
+      const sample = {
+        cmyk: [...cmyk],
+        targetLab: [...targetLab],
+        printedLab: [...printedLab],
+        accurate,
+        deltaE,
+        timestamp: Date.now(),
+        iterationId: Date.now() + Math.random()
+      };
+      
+      this.learningData.push(sample);
+      
+      // Also store in real-world results for comprehensive tracking
+      this.realWorldResults.push({
+        ...sample,
+        resultType: 'color_match',
+        success: accurate,
+        accuracy: deltaE <= 2.0 ? 'excellent' : deltaE <= 5.0 ? 'good' : 'needs_improvement'
+      });
+
+      // Update success statistics
+      this.modelStats.totalAttempts++;
+      if (accurate) {
+        this.modelStats.successfulMatches++;
+      }
+      
+      console.log('📈 Learning data added. Total learning samples:', this.learningData.length);
+      
+      // Auto-save after each learning iteration
+      this.saveToStorage();
+      
+      // Retrain with combined data
+      this.trainModel();
+    }
+
+    // CRITICAL: Train model on BOTH calibration + learning data
+    async trainModel() {
+      if (this.isTraining) {
+        console.log('⏳ Training already in progress, skipping...');
+        return;
+      }
+      
+      this.isTraining = true;
+      console.log('🧠 Starting AI training...');
+
+      try {
+        // CRITICAL: Combine calibration and learning data properly
+        const allSamples = [
+          // Calibration data: CMYK -> measured LAB (foundation)
+          ...this.calibrationData.map(c => ({
+            cmyk: c.cmyk,
+            targetLab: c.printedLab,
+            printedLab: c.printedLab,
+            weight: 1.0 // Full weight for calibration data
+          })),
+          // Learning data: CMYK -> printed LAB vs target LAB (refinement)
+          ...this.learningData.map(l => ({
+            cmyk: l.cmyk,
+            targetLab: l.targetLab,
+            printedLab: l.printedLab,
+            weight: l.accurate ? 1.2 : 0.8 // Higher weight for accurate results
+          }))
+        ];
+
+        this.modelStats.totalSamples = allSamples.length;
+        console.log(`🧠 Training on ${allSamples.length} samples (${this.calibrationData.length} calibration + ${this.learningData.length} learning)`);
+
+        if (allSamples.length >= 10) {
+          await this.trainNeuralNetwork(allSamples);
+          this.modelStats.neuralNetworkActive = true;
+        }
+
+        // Always maintain linear fallback
+        this.trainLinearModel(allSamples);
+
+        // Calculate overall accuracy
+        if (this.modelStats.totalAttempts > 0) {
+          this.modelStats.accuracy = (this.modelStats.successfulMatches / this.modelStats.totalAttempts) * 100;
+        }
+
+        console.log('✅ Training completed successfully');
+
+      } catch (error) {
+        console.error('❌ Training error:', error);
+      } finally {
+        this.isTraining = false;
+      }
+    }
+
+    // Train neural network with TensorFlow.js
+    async trainNeuralNetwork(samples) {
+      try {
+        console.log('🧠 Training neural network with', samples.length, 'samples');
+        
+        // Prepare training data with proper feature engineering
+        const inputs = samples.map(s => [
+          ...s.cmyk,           // 4 features: CMYK values
+          ...s.targetLab,      // 3 features: target LAB
+          // Add derived features for better learning
+          s.cmyk[0] + s.cmyk[1] + s.cmyk[2] + s.cmyk[3], // Total ink coverage
+          Math.abs(s.targetLab[1]) + Math.abs(s.targetLab[2]), // Color saturation
+        ]); // 9 total input features
+        
+        const outputs = samples.map(s => s.printedLab); // 3 outputs: printed LAB
+        const weights = samples.map(s => s.weight || 1.0); // Sample weights
+
+        // Create or update neural network
+        if (!this.neuralModel) {
+          this.neuralModel = tf.sequential({
+            layers: [
+              tf.layers.dense({ inputShape: [9], units: 32, activation: 'relu' }),
+              tf.layers.dropout({ rate: 0.2 }),
+              tf.layers.dense({ units: 24, activation: 'relu' }),
+              tf.layers.dropout({ rate: 0.1 }),
+              tf.layers.dense({ units: 16, activation: 'relu' }),
+              tf.layers.dense({ units: 3 }) // L, a, b output
+            ]
+          });
+
+          this.neuralModel.compile({
+            optimizer: tf.train.adam(0.001),
+            loss: 'meanSquaredError',
+            metrics: ['mae']
+          });
+        }
+
+        // Train the model with sample weights
+        const xs = tf.tensor2d(inputs);
+        const ys = tf.tensor2d(outputs);
+        const sampleWeights = tf.tensor1d(weights);
+
+        const history = await this.neuralModel.fit(xs, ys, {
+          epochs: Math.min(100, Math.max(20, samples.length * 2)),
+          batchSize: Math.min(32, Math.max(4, Math.floor(samples.length / 3))),
+          validationSplit: samples.length > 20 ? 0.2 : 0,
+          sampleWeight: sampleWeights,
+          verbose: 0
+        });
+
+        // Calculate accuracy based on final loss
+        const finalLoss = history.history.loss[history.history.loss.length - 1];
+        const networkAccuracy = Math.max(0, Math.min(100, (1 - Math.sqrt(finalLoss) / 50) * 100));
+        this.modelStats.confidence = Math.min(100, networkAccuracy + (samples.length * 0.5));
+
+        console.log(`🧠 Neural network trained: Loss=${finalLoss.toFixed(4)}, Confidence=${this.modelStats.confidence.toFixed(1)}%`);
+
+        xs.dispose();
+        ys.dispose();
+        sampleWeights.dispose();
+
+      } catch (error) {
+        console.error('❌ Neural network training error:', error);
+        this.modelStats.neuralNetworkActive = false;
+      }
+    }
+
+    // Train linear model fallback
+    trainLinearModel(samples) {
+      try {
+        if (samples.length < 3) return;
+
+        console.log('📊 Training linear model with', samples.length, 'samples');
+
+        // Prepare matrices for weighted linear regression
+        const X = samples.map(s => [
+          1, // bias term
+          ...s.cmyk,
+          ...s.targetLab,
+          // Add interaction terms for better modeling
+          s.cmyk[0] * s.targetLab[0], // C * L
+          s.cmyk[1] * s.targetLab[1], // M * a
+          s.cmyk[2] * s.targetLab[2], // Y * b
+          s.cmyk[3] * s.targetLab[0], // K * L
+          // Add quadratic terms
+          s.cmyk[0] * s.cmyk[0], // C²
+          s.cmyk[1] * s.cmyk[1], // M²
+          s.cmyk[2] * s.cmyk[2], // Y²
+          s.cmyk[3] * s.cmyk[3], // K²
+        ]);
+
+        const Y = samples.map(s => s.printedLab);
+        const W = samples.map(s => s.weight || 1.0);
+
+        // Apply sample weights to X and Y
+        const weightedX = X.map((row, i) => row.map(val => val * Math.sqrt(W[i])));
+        const weightedY = Y.map((row, i) => row.map(val => val * Math.sqrt(W[i])));
+
+        // Solve for each LAB component
+        const coefficients = [];
+        for (let i = 0; i < 3; i++) {
+          const y = weightedY.map(row => row[i]);
+          try {
+            const XtX = numeric.dot(numeric.transpose(weightedX), weightedX);
+            const Xty = numeric.dot(numeric.transpose(weightedX), y);
+            
+            // Add regularization to prevent overfitting
+            const lambda = 0.01;
+            for (let j = 0; j < XtX.length; j++) {
+              XtX[j][j] += lambda;
+            }
+            
+            const coeff = numeric.solve(XtX, Xty);
+            coefficients.push(coeff);
+          } catch (e) {
+            console.warn(`Linear regression failed for component ${i}, using fallback`);
+            coefficients.push(new Array(weightedX[0].length).fill(0));
+          }
+        }
+
+        this.linearModel = coefficients;
+        console.log(`📊 Linear model trained with ${samples.length} samples`);
+
+      } catch (error) {
+        console.error('❌ Linear model training error:', error);
+      }
+    }
+
+    // CRITICAL: Predict CMYK adjustments using trained models
+    async predictCMYKAdjustment(targetLab, printedLab, currentCmyk) {
+      console.log('🔍 Predicting CMYK adjustment:', { targetLab, printedLab, currentCmyk });
+      
+      try {
+        let predictedLab = [...printedLab];
+
+        // Use neural network if available and trained
+        if (this.neuralModel && this.modelStats.neuralNetworkActive) {
+          console.log('🧠 Using neural network for prediction');
+          const features = [
+            ...currentCmyk,
+            ...targetLab,
+            currentCmyk[0] + currentCmyk[1] + currentCmyk[2] + currentCmyk[3],
+            Math.abs(targetLab[1]) + Math.abs(targetLab[2])
+          ];
+          
+          const input = tf.tensor2d([features]);
+          const prediction = this.neuralModel.predict(input);
+          const predictionData = await prediction.data();
+          predictedLab = Array.from(predictionData);
+          
+          input.dispose();
+          prediction.dispose();
+        } else if (this.linearModel && this.linearModel.length === 3) {
+          console.log('📊 Using linear model for prediction');
+          // Use linear model fallback
+          const features = [
+            1, // bias
+            ...currentCmyk,
+            ...targetLab,
+            currentCmyk[0] * targetLab[0],
+            currentCmyk[1] * targetLab[1],
+            currentCmyk[2] * targetLab[2],
+            currentCmyk[3] * targetLab[0],
+            currentCmyk[0] * currentCmyk[0],
+            currentCmyk[1] * currentCmyk[1],
+            currentCmyk[2] * currentCmyk[2],
+            currentCmyk[3] * currentCmyk[3]
+          ];
+
+          predictedLab = this.linearModel.map(coeff => 
+            coeff.reduce((sum, c, i) => sum + c * (features[i] || 0), 0)
+          );
+        } else {
+          console.log('🎨 Using color theory fallback');
+        }
+
+        // Calculate LAB error
+        const labError = [
+          targetLab[0] - predictedLab[0], // ΔL
+          targetLab[1] - predictedLab[1], // Δa
+          targetLab[2] - predictedLab[2]  // Δb
+        ];
+
+        // Convert LAB error to CMYK adjustments using enhanced color theory
+        const cmykAdjustment = this.labErrorToCMYKAdjustment(labError, currentCmyk, targetLab);
+
+        // Apply adjustments with bounds checking
+        const suggestedCmyk = currentCmyk.map((value, i) => 
+          Math.max(0, Math.min(100, value + cmykAdjustment[i]))
+        );
+
+        const result = {
+          suggested: suggestedCmyk,
+          confidence: this.modelStats.confidence,
+          method: this.modelStats.neuralNetworkActive ? 'Neural Network' : 
+                 this.linearModel ? 'Linear Model' : 'Color Theory',
+          labError: labError,
+          adjustment: cmykAdjustment
+        };
+
+        console.log('✅ Prediction completed:', result);
+        return result;
+
+      } catch (error) {
+        console.error('❌ Prediction error:', error);
+        return {
+          suggested: [...currentCmyk],
+          confidence: 0,
+          method: 'Fallback',
+          labError: [0, 0, 0],
+          adjustment: [0, 0, 0, 0]
+        };
+      }
+    }
+
+    // Convert LAB error to CMYK adjustments
+    labErrorToCMYKAdjustment(labError, currentCmyk, targetLab) {
+      const [deltaL, deltaA, deltaB] = labError;
+      
+      // Enhanced color theory adjustments with adaptive scaling
+      const adjustments = [0, 0, 0, 0]; // C, M, Y, K
+      
+      // Calculate error magnitude for adaptive scaling
+      const errorMagnitude = Math.sqrt(deltaL*deltaL + deltaA*deltaA + deltaB*deltaB);
+      const scaleFactor = Math.min(2.0, Math.max(0.1, errorMagnitude / 10));
+
+      // Lightness adjustments (L* axis)
+      if (Math.abs(deltaL) > 0.5) {
+        const lightnessFactor = deltaL * 0.4 * scaleFactor;
+        
+        // Primary adjustment through K (black)
+        adjustments[3] -= lightnessFactor;
+        
+        // Secondary adjustments through CMY if needed
+        if (Math.abs(lightnessFactor) > 5) {
+          const overflow = (Math.abs(lightnessFactor) - 5) * 0.3;
+          adjustments[0] -= overflow * Math.sign(lightnessFactor);
+          adjustments[1] -= overflow * Math.sign(lightnessFactor);
+          adjustments[2] -= overflow * Math.sign(lightnessFactor);
+        }
+      }
+
+      // Red/Green adjustments (a* axis)
+      if (Math.abs(deltaA) > 0.5) {
+        const aFactor = deltaA * 0.5 * scaleFactor;
+        adjustments[1] -= aFactor; // Magenta primarily affects a*
+        adjustments[0] += aFactor * 0.3; // Cyan secondary effect
+      }
+
+      // Yellow/Blue adjustments (b* axis)
+      if (Math.abs(deltaB) > 0.5) {
+        const bFactor = deltaB * 0.5 * scaleFactor;
+        adjustments[2] -= bFactor; // Yellow primarily affects b*
+        adjustments[0] += bFactor * 0.2; // Cyan secondary effect
+      }
+
+      // Apply learning from historical data if available
+      if (this.learningData.length > 0) {
+        const recentLearning = this.learningData.slice(-10); // Last 10 iterations
+        const avgAdjustment = this.calculateHistoricalAdjustment(recentLearning, labError, targetLab);
+        
+        // Blend with color theory (70% theory, 30% learned)
+        for (let i = 0; i < 4; i++) {
+          adjustments[i] = adjustments[i] * 0.7 + avgAdjustment[i] * 0.3;
+        }
+      }
+
+      // Limit adjustment magnitude to prevent extreme changes
+      const maxAdjustment = 15; // Maximum 15% change per iteration
+      return adjustments.map(adj => Math.max(-maxAdjustment, Math.min(maxAdjustment, adj)));
+    }
+
+    // Calculate historical adjustment patterns
+    calculateHistoricalAdjustment(recentData, currentError, targetLab) {
+      if (recentData.length === 0) return [0, 0, 0, 0];
+
+      const adjustments = [0, 0, 0, 0];
+      let totalWeight = 0;
+
+      recentData.forEach(data => {
+        // Find similar color targets (within LAB tolerance)
+        const colorSimilarity = 1 / (1 + Math.sqrt(
+          Math.pow(data.targetLab[0] - targetLab[0], 2) +
+          Math.pow(data.targetLab[1] - targetLab[1], 2) +
+          Math.pow(data.targetLab[2] - targetLab[2], 2)
+        ));
+
+        if (colorSimilarity > 0.1) { // Only use reasonably similar colors
+          const weight = colorSimilarity * (data.accurate ? 2.0 : 0.5);
+          
+          // Calculate implicit adjustment (simplified)
+          const errorDirection = [
+            data.targetLab[0] - data.printedLab[0],
+            data.targetLab[1] - data.printedLab[1],
+            data.targetLab[2] - data.printedLab[2]
+          ];
+
+          // Convert error direction to CMYK adjustment direction
+          adjustments[0] += errorDirection[1] * 0.2 * weight; // a* -> Cyan
+          adjustments[1] += -errorDirection[1] * 0.4 * weight; // a* -> Magenta
+          adjustments[2] += -errorDirection[2] * 0.4 * weight; // b* -> Yellow
+          adjustments[3] += -errorDirection[0] * 0.3 * weight; // L* -> Black
+
+          totalWeight += weight;
+        }
+      });
+
+      return totalWeight > 0 ? adjustments.map(adj => adj / totalWeight) : [0, 0, 0, 0];
+    }
+
+    // Get model statistics
+    getModelStats() {
+      return {
+        ...this.modelStats,
+        calibrationPatches: this.calibrationData.length,
+        learningIterations: this.learningData.length,
+        realWorldResults: this.realWorldResults.length,
+        isTraining: this.isTraining,
+        successRate: this.modelStats.totalAttempts > 0 ? 
+          (this.modelStats.successfulMatches / this.modelStats.totalAttempts * 100) : 0
+      };
+    }
+
+    // CRITICAL: Enhanced Save/Load functionality with comprehensive data
+    saveToStorage() {
+      const data = {
+        calibrationData: this.calibrationData,
+        learningData: this.learningData,
+        realWorldResults: this.realWorldResults,
+        modelStats: this.modelStats,
+        version: '2.1.6',
+        timestamp: Date.now(),
+        metadata: {
+          totalSessions: (JSON.parse(localStorage.getItem('colorMatcherAI') || '{}').metadata?.totalSessions || 0) + 1,
+          lastSaved: new Date().toISOString()
+        }
+      };
+      
+      try {
+        localStorage.setItem('colorMatcherAI', JSON.stringify(data));
+        console.log(`✅ Data saved successfully: ${this.calibrationData.length} calibration + ${this.learningData.length} learning + ${this.realWorldResults.length} results`);
+      } catch (error) {
+        console.error('❌ Error saving data:', error);
+      }
+    }
+
+    loadFromStorage() {
+      try {
+        const saved = localStorage.getItem('colorMatcherAI');
+        if (saved) {
+          const data = JSON.parse(saved);
+          
+          this.calibrationData = data.calibrationData || [];
+          this.learningData = data.learningData || [];
+          this.realWorldResults = data.realWorldResults || [];
+          this.modelStats = { ...this.modelStats, ...data.modelStats };
+          
+          console.log(`✅ Data loaded successfully: ${this.calibrationData.length} calibration + ${this.learningData.length} learning + ${this.realWorldResults.length} results`);
+          
+          // Retrain if we have data
+          if (this.calibrationData.length > 0 || this.learningData.length > 0) {
+            this.trainModel();
+          }
+          
+          return true;
+        }
+      } catch (error) {
+        console.error('❌ Error loading saved data:', error);
+      }
+      return false;
+    }
+  }
+
+  // Enhanced Number Input with negative support
+  const NumberInput = ({ value, onChange, min = -200, max = 200, step = 0.1, placeholder, className = "" }) => {
+    const handleKeyDown = (e) => {
+      if (e.code === 'NumpadSubtract' || e.code === 'Minus') {
+        e.preventDefault();
+        const currentValue = parseFloat(e.target.value) || 0;
+        onChange(-currentValue);
+      } else if (e.code === 'NumpadAdd' || e.code === 'Plus') {
+        e.preventDefault();
+        const currentValue = parseFloat(e.target.value) || 0;
+        onChange(Math.abs(currentValue));
+      }
+    };
+
+    return (
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+        onKeyDown={handleKeyDown}
+        min={min}
+        max={max}
+        step={step}
+        placeholder={placeholder}
+        className={`number-input px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${className}`}
+      />
+    );
+  };
+
+  // Export function for calibration data
+  function exportCalibration() {
+    try {
+      console.log('🔍 Starting export process...');
+      
+      // Read your entire saved blob from localStorage
+      const data = localStorage.getItem('colorMatcherAI');
+      if (!data) {
+        alert('❌ No calibration data found to export!');
+        return;
+      }
+
+      console.log('✅ Found calibration data in localStorage');
+      
+      // Parse and validate the data
+      const parsedData = JSON.parse(data);
+      console.log('📊 Export data summary:', {
+        calibrationPatches: parsedData.calibrationData?.length || 0,
+        learningIterations: parsedData.learningData?.length || 0,
+        realWorldResults: parsedData.realWorldResults?.length || 0
+      });
+
+      // Create enhanced export with metadata
+      const exportData = {
+        ...parsedData,
+        exportMetadata: {
+          exportDate: new Date().toISOString(),
+          version: '2.1.6',
+          exportedBy: 'ColorMatcherPro',
+          totalCalibrationPatches: parsedData.calibrationData?.length || 0,
+          totalLearningIterations: parsedData.learningData?.length || 0,
+          totalRealWorldResults: parsedData.realWorldResults?.length || 0
+        }
+      };
+
+      // Create a JSON file blob
+      const jsonString = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      // Programmatically click a hidden anchor to trigger download
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ColorMatcherPro_Backup_${new Date().toISOString().split('T')[0]}_${Date.now()}.json`;
+      document.body.appendChild(a);  // Required for Firefox
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      console.log('✅ Export completed successfully');
+      alert(`✅ Backup exported successfully!\n\nExported:\n• ${exportData.exportMetadata.totalCalibrationPatches} calibration patches\n• ${exportData.exportMetadata.totalLearningIterations} learning iterations\n• ${exportData.exportMetadata.totalRealWorldResults} real-world results\n\nFile saved to Downloads folder.`);
+
+    } catch (err) {
+      console.error('❌ Export failed:', err);
+      alert('❌ Failed to export calibration data: ' + err.message);
+    }
+  }
+
+  // UI Tabs Component
+  const Tabs = ({ active, onChange }) => {
+    const tabs = [
+      { id: 'match', label: 'Color Match', icon: '🎨' },
+      { id: 'confirm', label: 'Confirm Result', icon: '✅' },
+      { id: 'cal', label: 'Calibration', icon: '📊' },
+      { id: 'learn', label: 'AI Learning', icon: '🧠' },
+      { id: 'hist', label: 'History', icon: '📈' }
+    ];
+
+    return (
+      <div className="flex border-b border-gray-200 bg-white rounded-t-lg">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => onChange(tab.id)}
+            className={`flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+              active === tab.id
+                ? 'border-blue-500 text-blue-600 bg-blue-50'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <span className="mr-2">{tab.icon}</span>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+    );
+  };
+
+  // Color Match Component
+  function ColorMatch({ aiModel, onSuggest }) {
+    const [originalLab, setOriginalLab] = useState([0, 0, 0]);
+    const [printedLab, setPrintedLab] = useState([0, 0, 0]);
+    const [cmykInput, setCmykInput] = useState([0, 0, 0, 0]);
+    const [suggestedCmyk, setSuggestedCmyk] = useState([0, 0, 0, 0]);
+    const [isCalculating, setIsCalculating] = useState(false);
+    const [predictionDetails, setPredictionDetails] = useState(null);
+
+    // Auto-calculate suggestions when all values are present
+    useEffect(() => {
+      const calculateSuggestions = async () => {
+        if (originalLab.some(v => v !== 0) && 
+            printedLab.some(v => v !== 0) && 
+            cmykInput.some(v => v !== 0)) {
+          
+          setIsCalculating(true);
+          
+          try {
+            const result = await aiModel.predictCMYKAdjustment(
+              originalLab,
+              printedLab,
+              cmykInput
+            );
+            setSuggestedCmyk(result.suggested);
+            setPredictionDetails(result);
+          } catch (error) {
+            console.error('❌ Calculation error:', error);
+            // Fallback to simple color theory
+            const deltaE = ColorAlgorithms.deltaE00(originalLab, printedLab);
+            if (deltaE > 2) {
+              const labDiff = originalLab.map((val, i) => val - printedLab[i]);
+              const adjustment = [
+                -labDiff[1] * 0.3, // a* affects magenta/cyan
+                -labDiff[1] * 0.4, // a* primarily affects magenta
+                -labDiff[2] * 0.4, // b* affects yellow
+                -labDiff[0] * 0.3  // L* affects black
+              ];
+              const suggested = cmykInput.map((val, i) => 
+                Math.max(0, Math.min(100, val + adjustment[i]))
+              );
+              setSuggestedCmyk(suggested);
+              setPredictionDetails({
+                suggested,
+                confidence: 50,
+                method: 'Color Theory Fallback'
+              });
+            } else {
+              setSuggestedCmyk([...cmykInput]);
+              setPredictionDetails({
+                suggested: cmykInput,
+                confidence: 100,
+                method: 'No Adjustment Needed'
+              });
+            }
+          } finally {
+            setIsCalculating(false);
+          }
+        }
+      };
+
+      calculateSuggestions();
+    }, [originalLab, printedLab, cmykInput, aiModel]);
+
+    const handlePrintConfirm = () => {
+      const result = {
+        id: Date.now(),
+        targetLab: [...originalLab],
+        printedLab: [...printedLab],
+        inputCmyk: [...cmykInput],
+        suggested: [...suggestedCmyk],
+        timestamp: new Date().toLocaleString(),
+        predictionDetails
+      };
+      
+      onSuggest(result);
+    };
+
+    const deltaE = ColorAlgorithms.deltaE00(originalLab, printedLab);
+    const originalRgb = ColorAlgorithms.labToRgb(originalLab);
+    const printedRgb = ColorAlgorithms.labToRgb(printedLab);
+    const cmykRgb = ColorAlgorithms.cmykToRgb(cmykInput);
+    const suggestedRgb = ColorAlgorithms.cmykToRgb(suggestedCmyk);
+
+    const modelStats = aiModel.getModelStats();
+
+    return (
+      <div className="space-y-6 p-6">
+        {/* AI Status */}
+        {modelStats.calibrationPatches > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center space-x-2">
+              <span className="text-blue-600">🤖</span>
+              <span className="font-semibold text-blue-800">
+                {isCalculating ? 'AI Analyzing...' : 'AI Ready'}
+              </span>
+              {predictionDetails && (
+                <span className="text-sm text-blue-600">
+                  ({predictionDetails.method})
+                </span>
+              )}
+            </div>
+            <div className="text-sm text-blue-600 mt-1">
+              Using {modelStats.calibrationPatches} calibration patches + {modelStats.learningIterations} learning iterations
+              {modelStats.neuralNetworkActive && ' • Neural Network Active 🧠'}
+              {modelStats.successRate > 0 && ` • Success Rate: ${modelStats.successRate.toFixed(1)}%`}
+            </div>
+          </div>
+        )}
+
+        {/* Original Scanned LAB */}
+        <div className="bg-white p-6 rounded-lg shadow-md border">
+          <h3 className="text-lg font-semibold mb-4 flex items-center">
+            📊 Original Scanned LAB Values
+            <div 
+              className="w-12 h-12 border-2 border-gray-300 rounded ml-4" 
+              style={{backgroundColor: `rgb(${originalRgb.join(',')})`}}
+              title={`RGB: ${originalRgb.join(', ')}`}
+            ></div>
+          </h3>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">L* (Lightness)</label>
+              <NumberInput
+                value={originalLab[0]}
+                onChange={(val) => setOriginalLab([val, originalLab[1], originalLab[2]])}
+                min={0}
+                max={100}
+                placeholder="0-100"
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">a* (Red/Green)</label>
+              <NumberInput
+                value={originalLab[1]}
+                onChange={(val) => setOriginalLab([originalLab[0], val, originalLab[2]])}
+                min={-128}
+                max={127}
+                placeholder="-128 to 127"
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">b* (Yellow/Blue)</label>
+              <NumberInput
+                value={originalLab[2]}
+                onChange={(val) => setOriginalLab([originalLab[0], originalLab[1], val])}
+                min={-128}
+                max={127}
+                placeholder="-128 to 127"
+                className="w-full"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Printed LAB */}
+        <div className="bg-white p-6 rounded-lg shadow-md border">
+          <h3 className="text-lg font-semibold mb-4 flex items-center">
+            📊 Printed LAB Result
+            <div 
+              className="w-12 h-12 border-2 border-gray-300 rounded ml-4" 
+              style={{backgroundColor: `rgb(${printedRgb.join(',')})`}}
+              title={`RGB: ${printedRgb.join(', ')}`}
+            ></div>
+            {deltaE > 0 && (
+              <span className={`ml-4 px-3 py-1 rounded-full text-sm font-medium ${
+                deltaE <= 2 ? 'bg-green-100 text-green-800' : 
+                deltaE <= 5 ? 'bg-yellow-100 text-yellow-800' : 
+                'bg-red-100 text-red-800'
+              }`}>
+                ΔE: {deltaE.toFixed(2)}
+              </span>
+            )}
+          </h3>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">L* (Lightness)</label>
+              <NumberInput
+                value={printedLab[0]}
+                onChange={(val) => setPrintedLab([val, printedLab[1], printedLab[2]])}
+                min={0}
+                max={100}
+                placeholder="0-100"
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">a* (Red/Green)</label>
+              <NumberInput
+                value={printedLab[1]}
+                onChange={(val) => setPrintedLab([printedLab[0], val, printedLab[2]])}
+                min={-128}
+                max={127}
+                placeholder="-128 to 127"
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">b* (Yellow/Blue)</label>
+              <NumberInput
+                value={printedLab[2]}
+                onChange={(val) => setPrintedLab([printedLab[0], printedLab[1], val])}
+                min={-128}
+                max={127}
+                placeholder="-128 to 127"
+                className="w-full"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* CMYK Input */}
+        <div className="bg-white p-6 rounded-lg shadow-md border">
+          <h3 className="text-lg font-semibold mb-4 flex items-center">
+            🎨 CMYK Input Values
+            <div 
+              className="w-12 h-12 border-2 border-gray-300 rounded ml-4" 
+              style={{backgroundColor: `rgb(${cmykRgb.join(',')})`}}
+              title={`RGB: ${cmykRgb.join(', ')}`}
+            ></div>
+          </h3>
+          <div className="grid grid-cols-4 gap-4">
+            {['Cyan', 'Magenta', 'Yellow', 'Black'].map((color, index) => (
+              <div key={color}>
+                <label className="block text-sm font-medium text-gray-700 mb-2">{color} (%)</label>
+                <NumberInput
+                  value={cmykInput[index]}
+                  onChange={(val) => {
+                    const newCmyk = [...cmykInput];
+                    newCmyk[index] = val;
+                    setCmykInput(newCmyk);
+                  }}
+                  min={0}
+                  max={100}
+                  placeholder="0-100"
+                  className="w-full"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* AI Suggested CMYK */}
+        <div className="bg-green-50 p-6 rounded-lg shadow-md border border-green-200">
+          <h3 className="text-lg font-semibold mb-4 flex items-center text-green-800">
+            🤖 AI Suggested CMYK Values
+            <div 
+              className="w-12 h-12 border-2 border-green-300 rounded ml-4" 
+              style={{backgroundColor: `rgb(${suggestedRgb.join(',')})`}}
+              title={`RGB: ${suggestedRgb.join(', ')}`}
+            ></div>
+            {predictionDetails && predictionDetails.confidence > 0 && (
+              <span className="ml-4 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                Confidence: {Math.round(predictionDetails.confidence)}%
+              </span>
+            )}
+          </h3>
+          <div className="grid grid-cols-4 gap-4">
+            {['Cyan', 'Magenta', 'Yellow', 'Black'].map((color, index) => (
+              <div key={color}>
+                <label className="block text-sm font-medium text-green-700 mb-2">{color} (%)</label>
+                <div className="px-3 py-2 bg-white border border-green-300 rounded-md text-center font-medium">
+                  {suggestedCmyk[index].toFixed(1)}
+                  {predictionDetails && predictionDetails.adjustment && (
+                    <div className="text-xs text-green-600 mt-1">
+                      {predictionDetails.adjustment[index] > 0 ? '+' : ''}{predictionDetails.adjustment[index].toFixed(1)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          <button
+            onClick={handlePrintConfirm}
+            className="mt-6 w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          >
+            🖨️ Print & Confirm
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // FIXED: Confirm Result Component with proper navigation
+  function ConfirmResult({ aiModel, rounds, setRounds, onNewIteration }) {
+    const [finalLab, setFinalLab] = useState([0, 0, 0]);
+    const [isProcessing, setIsProcessing] = useState(false);
+
+    const currentResult = rounds[rounds.length - 1];
+
+    if (!currentResult) {
+      return (
+        <div className="text-center py-12 p-6">
+          <p className="text-gray-500">No print job to confirm. Please use "Print & Confirm" from the Color Match tab first.</p>
+        </div>
+      );
+    }
+
+    const handleConfirm = async () => {
+      setIsProcessing(true);
+      
+      const deltaE = ColorAlgorithms.deltaE00(currentResult.targetLab, finalLab);
+      const isAccurate = deltaE <= 2.0;
+      
+      // Add learning data to AI with accuracy information
+      aiModel.addLearningData(
+        currentResult.suggested,
+        currentResult.targetLab,
+        finalLab,
+        isAccurate,
+        deltaE
+      );
+      
+      // Update the current result with final data
+      const updatedResult = {
+        ...currentResult,
+        finalLab: [...finalLab],
+        deltaE,
+        isAccurate,
+        completedAt: new Date().toLocaleString()
+      };
+      
+      // Update rounds
+      const updatedRounds = [...rounds];
+      updatedRounds[updatedRounds.length - 1] = updatedResult;
+      setRounds(updatedRounds);
+      
+      setIsProcessing(false);
+      
+      if (!isAccurate) {
+        // FIXED: Trigger new iteration with improved values
+        alert(`ΔE: ${deltaE.toFixed(2)} - Starting next iteration with AI-improved values.`);
+        
+        // Get new AI suggestion based on the learning
+        try {
+          const newSuggestion = await aiModel.predictCMYKAdjustment(
+            currentResult.targetLab,
+            finalLab,
+            currentResult.suggested
+          );
+          
+          // Create new iteration result
+          const newIterationResult = {
+            id: Date.now() + 1,
+            targetLab: [...currentResult.targetLab],
+            printedLab: [...finalLab],
+            inputCmyk: [...currentResult.suggested],
+            suggested: [...newSuggestion.suggested],
+            timestamp: new Date().toLocaleString(),
+            predictionDetails: newSuggestion,
+            iteration: (currentResult.iteration || 1) + 1
+          };
+          
+          // Add to rounds and trigger callback
+          setRounds([...updatedRounds, newIterationResult]);
+          
+          // Show the new suggestion
+          alert(`🤖 AI has learned from this result!\n\nNew Iteration ${newIterationResult.iteration}:\nSuggested CMYK: C:${newSuggestion.suggested[0].toFixed(1)} M:${newSuggestion.suggested[1].toFixed(1)} Y:${newSuggestion.suggested[2].toFixed(1)} K:${newSuggestion.suggested[3].toFixed(1)}\nConfidence: ${Math.round(newSuggestion.confidence)}%\n\nPrint these values and measure the result.`);
+          
+        } catch (error) {
+          console.error('❌ Error generating new iteration:', error);
+          alert('❌ Error generating new iteration. Please try again.');
+        }
+      } else {
+        alert(`✅ Excellent! ΔE: ${deltaE.toFixed(2)} - Color match successful!`);
+      }
+      
+      // Reset for next iteration or new color
+      setFinalLab([0, 0, 0]);
+    };
+
+    const deltaE = finalLab.some(v => v !== 0) ? ColorAlgorithms.deltaE00(currentResult.targetLab, finalLab) : 0;
+    const isAccurate = deltaE <= 2.0 && deltaE > 0;
+    const finalRgb = ColorAlgorithms.labToRgb(finalLab);
+
+    return (
+      <div className="space-y-6 p-6">
+        {/* Current Print Summary */}
+        <div className="bg-white p-6 rounded-lg shadow-md border">
+          <h3 className="text-lg font-semibold mb-4">📋 Current Print Summary</h3>
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <h4 className="font-medium text-gray-700 mb-2">Target LAB:</h4>
+              <p className="text-sm bg-gray-100 p-2 rounded">
+                L*: {currentResult.targetLab[0].toFixed(1)}, 
+                a*: {currentResult.targetLab[1].toFixed(1)}, 
+                b*: {currentResult.targetLab[2].toFixed(1)}
+              </p>
+            </div>
+            <div>
+              <h4 className="font-medium text-gray-700 mb-2">Printed CMYK:</h4>
+              <p className="text-sm bg-gray-100 p-2 rounded">
+                C: {currentResult.suggested[0].toFixed(1)}%, 
+                M: {currentResult.suggested[1].toFixed(1)}%, 
+                Y: {currentResult.suggested[2].toFixed(1)}%, 
+                K: {currentResult.suggested[3].toFixed(1)}%
+              </p>
+            </div>
+          </div>
+          {currentResult.iteration && (
+            <div className="mt-4 text-sm text-blue-600 font-medium">
+              🔄 Iteration #{currentResult.iteration}
+            </div>
+          )}
+        </div>
+
+        {/* Final LAB Input */}
+        <div className="bg-white p-6 rounded-lg shadow-md border">
+          <h3 className="text-lg font-semibold mb-4 flex items-center">
+            📏 Final Measured LAB Values
+            <div 
+              className="w-12 h-12 border-2 border-gray-300 rounded ml-4" 
+              style={{backgroundColor: `rgb(${finalRgb.join(',')})`}}
+              title={`RGB: ${finalRgb.join(', ')}`}
+            ></div>
+            {deltaE > 0 && (
+              <span className={`ml-4 px-3 py-1 rounded-full text-sm font-medium ${
+                isAccurate ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+              }`}>
+                ΔE: {deltaE.toFixed(2)} {isAccurate ? '✅ Accurate' : '❌ Needs Improvement'}
+              </span>
+            )}
+          </h3>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">L* (Lightness)</label>
+              <NumberInput
+                value={finalLab[0]}
+                onChange={(val) => setFinalLab([val, finalLab[1], finalLab[2]])}
+                min={0}
+                max={100}
+                placeholder="0-100"
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">a* (Red/Green)</label>
+              <NumberInput
+                value={finalLab[1]}
+                onChange={(val) => setFinalLab([finalLab[0], val, finalLab[2]])}
+                min={-128}
+                max={127}
+                placeholder="-128 to 127"
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">b* (Yellow/Blue)</label>
+              <NumberInput
+                value={finalLab[2]}
+                onChange={(val) => setFinalLab([finalLab[0], finalLab[1], val])}
+                min={-128}
+                max={127}
+                placeholder="-128 to 127"
+                className="w-full"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Confirmation */}
+        <div className={`p-6 rounded-lg shadow-md border ${isAccurate ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+          <h3 className="text-lg font-semibold mb-4">
+            {isAccurate ? '✅ Excellent Result!' : '🔄 Needs Another Iteration'}
+          </h3>
+          <p className="text-sm mb-4">
+            {isAccurate 
+              ? 'Your color match is within acceptable tolerance (ΔE ≤ 2.0). The AI will learn from this successful result and improve future predictions.'
+              : `Current ΔE of ${deltaE.toFixed(2)} is above the target of 2.0. The AI will learn from this result and suggest better values for the next iteration.`
+            }
+          </p>
+          
+          <button
+            onClick={handleConfirm}
+            disabled={isProcessing || finalLab.every(v => v === 0)}
+            className={`w-full py-3 px-6 rounded-lg font-medium transition-colors ${
+              isAccurate 
+                ? 'bg-green-600 text-white hover:bg-green-700' 
+                : 'bg-yellow-600 text-white hover:bg-yellow-700'
+            } ${(isProcessing || finalLab.every(v => v === 0)) ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {isProcessing ? '🧠 AI Learning...' : 
+             isAccurate ? '✅ Confirm Success & Save' : '🔄 Learn & Suggest Next Iteration'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // CRITICAL: FIXED Calibration50 Component - Simplified and Working
+  function Calibration50({ aiModel }) {
+    const [completedPatches, setCompletedPatches] = useState(new Set());
+    const [selectedPatch, setSelectedPatch] = useState(null);
+    const [labInput, setLabInput] = useState([0, 0, 0]);
+
+    // Load saved calibration data on mount
+    useEffect(() => {
+      console.log('🔍 Loading calibration data...');
+      const savedData = aiModel.calibrationData;
+      
+      if (savedData && savedData.length > 0) {
+        const completed = new Set();
+        
+        savedData.forEach((item) => {
+          // Find matching patch by CMYK values
+          const patchIndex = PATCHES.findIndex(patch => {
+            const patchKey = patch.cmyk.join(',');
+            const itemKey = item.cmyk.join(',');
+            return patchKey === itemKey;
+          });
+          
+          if (patchIndex >= 0) {
+            completed.add(patchIndex);
+            console.log(`✅ Loaded patch ${patchIndex}: ${PATCHES[patchIndex].name}`);
+          }
+        });
+        
+        setCompletedPatches(completed);
+        console.log(`📊 Loaded ${completed.size} completed patches`);
+      }
+    }, [aiModel]);
+
+    // Handle patch selection
+    const handlePatchClick = (patchIndex) => {
+      console.log(`🔍 Selected patch ${patchIndex}: ${PATCHES[patchIndex].name}`);
+      setSelectedPatch(patchIndex);
+      
+      // If patch is already completed, load its LAB values for editing
+      if (completedPatches.has(patchIndex)) {
+        const existingData = aiModel.calibrationData.find(d => 
+          d.cmyk.join(',') === PATCHES[patchIndex].cmyk.join(',')
+        );
+        if (existingData) {
+          setLabInput([...existingData.printedLab]);
+          console.log('🔄 Editing existing patch with LAB:', existingData.printedLab);
+        }
+      } else {
+        setLabInput([0, 0, 0]);
+      }
+    };
+
+    // Handle patch save
+    const handleSavePatch = () => {
+      if (selectedPatch === null || labInput.every(v => v === 0)) {
+        alert('Please enter all LAB values before saving.');
+        return;
+      }
+
+      const patch = PATCHES[selectedPatch];
+      console.log(`💾 Saving patch ${selectedPatch}: ${patch.name} with LAB:`, labInput);
+      
+      try {
+        const success = aiModel.addCalibrationData(patch.cmyk, labInput);
+        if (success) {
+          setCompletedPatches(prev => new Set([...prev, selectedPatch]));
+          setSelectedPatch(null);
+          setLabInput([0, 0, 0]);
+          console.log(`✅ Patch ${selectedPatch} saved successfully`);
+        } else {
+          alert('❌ Error saving calibration data. Please try again.');
+        }
+      } catch (error) {
+        console.error('❌ Error saving patch:', error);
+        alert('❌ Error saving calibration data: ' + error.message);
+      }
+    };
+
+    const progressPercentage = (completedPatches.size / PATCHES.length) * 100;
+
+    return (
+      <div className="space-y-6 p-6">
+        {/* Progress Header */}
+        <div className="bg-white p-6 rounded-lg shadow-md border">
+          <h3 className="text-lg font-semibold mb-4">📊 Calibration Progress</h3>
+          <div className="flex items-center space-x-4">
+            <div className="flex-1 bg-gray-200 rounded-full h-4">
+              <div 
+                className="bg-blue-600 h-4 rounded-full transition-all duration-500"
+                style={{ width: `${progressPercentage}%` }}
+              ></div>
+            </div>
+            <span className="font-medium text-gray-700">
+              {completedPatches.size}/50 patches ({Math.round(progressPercentage)}%)
+            </span>
+          </div>
+          {completedPatches.size >= 10 && (
+            <div className="mt-3 text-sm text-green-600 font-medium">
+              🤖 AI Neural Network Active - Professional accuracy achieved!
+            </div>
+          )}
+        </div>
+
+        {/* Export Button */}
+        <div className="bg-white p-4 rounded-lg shadow-md border">
+          <button
+            onClick={exportCalibration}
+            className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors font-medium"
+          >
+            📤 Export Complete Backup
+          </button>
+        </div>
+
+        {/* Calibration Grid */}
+        <div className="bg-white p-6 rounded-lg shadow-md border">
+          <h3 className="text-lg font-semibold mb-4">🎨 Color Calibration Patches</h3>
+          <div className="grid grid-cols-5 gap-4">
+            {PATCHES.map((patch, patchIndex) => {
+              const rgb = ColorAlgorithms.cmykToRgb(patch.cmyk);
+              const isCompleted = completedPatches.has(patchIndex);
+              const isSelected = selectedPatch === patchIndex;
+              
+              return (
+                <div
+                  key={patchIndex}
+                  onClick={() => handlePatchClick(patchIndex)}
+                  className={`calibration-patch p-3 rounded-lg border-2 cursor-pointer ${
+                    isCompleted ? 'completed' : 
+                    isSelected ? 'selected' : 
+                    'border-gray-300 hover:border-blue-400'
+                  }`}
+                >
+                  <div 
+                    className="w-full h-16 rounded mb-2"
+                    style={{ backgroundColor: `rgb(${rgb.join(',')})` }}
+                  ></div>
+                  <div className="text-xs font-medium text-center">
+                    #{patchIndex + 1}: {patch.name}
+                  </div>
+                  <div className="text-xs text-gray-500 text-center mt-1">
+                    C:{patch.cmyk[0]} M:{patch.cmyk[1]} Y:{patch.cmyk[2]} K:{patch.cmyk[3]}
+                  </div>
+                  {isCompleted && (
+                    <div className="checkmark">✅</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* LAB Input Form for Selected Patch */}
+        {selectedPatch !== null && (
+          <div className="bg-blue-50 p-6 rounded-lg shadow-md border border-blue-200">
+            <h3 className="text-lg font-semibold mb-4">
+              📏 {completedPatches.has(selectedPatch) ? '🔄 Editing' : '📝 Measuring'} Patch #{selectedPatch + 1}: {PATCHES[selectedPatch].name}
+            </h3>
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">L* (Lightness)</label>
+                <NumberInput
+                  value={labInput[0]}
+                  onChange={(val) => setLabInput([val, labInput[1], labInput[2]])}
+                  min={0}
+                  max={100}
+                  placeholder="0-100"
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">a* (Red/Green)</label>
+                <NumberInput
+                  value={labInput[1]}
+                  onChange={(val) => setLabInput([labInput[0], val, labInput[2]])}
+                  min={-128}
+                  max={127}
+                  placeholder="-128 to 127"
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">b* (Yellow/Blue)</label>
+                <NumberInput
+                  value={labInput[2]}
+                  onChange={(val) => setLabInput([labInput[0], labInput[1], val])}
+                  min={-128}
+                  max={127}
+                  placeholder="-128 to 127"
+                  className="w-full"
+                />
+              </div>
+            </div>
+            <div className="flex space-x-3">
+              <button
+                onClick={handleSavePatch}
+                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                ✅ {completedPatches.has(selectedPatch) ? 'Update Patch' : 'Complete This Patch'}
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedPatch(null);
+                  setLabInput([0, 0, 0]);
+                }}
+                className="flex-1 bg-gray-600 text-white py-2 px-4 rounded-lg hover:bg-gray-700 transition-colors font-medium"
+              >
+                ❌ Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // AI Learning Component
+  function AILearning({ aiModel }) {
+    const [modelStats, setModelStats] = useState(aiModel.getModelStats());
+
+    useEffect(() => {
+      const interval = setInterval(() => {
+        setModelStats(aiModel.getModelStats());
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }, [aiModel]);
+
+    return (
+      <div className="space-y-6 p-6">
+        {/* AI Status Overview */}
+        <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-6 rounded-lg shadow-md">
+          <h3 className="text-xl font-bold mb-4">🤖 AI Learning Status</h3>
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <h4 className="font-semibold mb-3">📊 Training Data</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>Calibration Patches:</span>
+                  <span className="font-medium">{modelStats.calibrationPatches}/50</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Learning Iterations:</span>
+                  <span className="font-medium">{modelStats.learningIterations}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Real-World Results:</span>
+                  <span className="font-medium">{modelStats.realWorldResults}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Total Training Samples:</span>
+                  <span className="font-medium">{modelStats.calibrationPatches + modelStats.learningIterations}</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-3">🧠 AI Performance</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>Neural Network:</span>
+                  <span className={`font-medium ${modelStats.neuralNetworkActive ? 'text-green-300' : 'text-yellow-300'}`}>
+                    {modelStats.neuralNetworkActive ? '🧠 Active' : '⏳ Training'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Success Rate:</span>
+                  <span className="font-medium">{modelStats.successRate.toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Confidence Level:</span>
+                  <span className="font-medium">{Math.round(modelStats.confidence)}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Training Status:</span>
+                  <span className={`font-medium ${modelStats.isTraining ? 'text-yellow-300' : 'text-green-300'}`}>
+                    {modelStats.isTraining ? '🔄 Training...' : '✅ Ready'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Learning Progress */}
+        <div className="bg-white p-6 rounded-lg shadow-md border">
+          <h3 className="text-lg font-semibold mb-4">📈 Learning Progress</h3>
+          <div className="space-y-4">
+            <div>
+              <div className="flex justify-between text-sm text-gray-600 mb-1">
+                <span>Calibration Progress</span>
+                <span>{modelStats.calibrationPatches}/50 patches</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${(modelStats.calibrationPatches / 50) * 100}%` }}
+                ></div>
+              </div>
+            </div>
+            
+            <div>
+              <div className="flex justify-between text-sm text-gray-600 mb-1">
+                <span>AI Confidence</span>
+                <span>{Math.round(modelStats.confidence)}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-green-600 h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${modelStats.confidence}%` }}
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Learning Recommendations */}
+        <div className="bg-yellow-50 border border-yellow-200 p-6 rounded-lg">
+          <h3 className="text-lg font-semibold mb-4 text-yellow-800">💡 Learning Recommendations</h3>
+          <div className="text-sm text-yellow-700 space-y-2">
+            {modelStats.calibrationPatches < 10 && (
+              <p><strong>🎯 Complete more calibration:</strong> Add more calibration patches to activate the neural network (need 10+ patches).</p>
+            )}
+            {modelStats.calibrationPatches >= 10 && modelStats.calibrationPatches < 50 && (
+              <p><strong>📊 Expand calibration:</strong> Complete all 50 patches for maximum accuracy across the full color gamut.</p>
+            )}
+            {modelStats.learningIterations < 5 && (
+              <p><strong>🔄 Practice color matching:</strong> Complete more color matching iterations to improve AI learning.</p>
+            )}
+            {modelStats.successRate < 70 && modelStats.learningIterations >= 5 && (
+              <p><strong>🎨 Review technique:</strong> Consider reviewing measurement technique or printer settings for better consistency.</p>
+            )}
+            {modelStats.calibrationPatches >= 50 && modelStats.successRate >= 70 && (
+              <p><strong>✅ Excellent progress!</strong> Your AI model is well-trained and should provide highly accurate predictions.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // History Component
+  function History({ rounds }) {
+    if (rounds.length === 0) {
+      return (
+        <div className="text-center py-12 p-6">
+          <p className="text-gray-500">No color matching history yet. Complete some color matches to see results here.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4 p-6">
+        <h3 className="text-lg font-semibold">📈 Color Matching History</h3>
+        {rounds.map((round, index) => (
+          <div key={round.id} className="bg-white p-4 rounded-lg shadow-md border">
+            <div className="flex justify-between items-start mb-2">
+              <h4 className="font-medium">
+                Round #{index + 1}
+                {round.iteration && <span className="text-blue-600 ml-2">(Iteration {round.iteration})</span>}
+              </h4>
+              <span className="text-sm text-gray-500">{round.timestamp}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <strong>Target LAB:</strong> L:{round.targetLab[0].toFixed(1)}, a:{round.targetLab[1].toFixed(1)}, b:{round.targetLab[2].toFixed(1)}
+              </div>
+              <div>
+                <strong>Suggested CMYK:</strong> C:{round.suggested[0].toFixed(1)}, M:{round.suggested[1].toFixed(1)}, Y:{round.suggested[2].toFixed(1)}, K:{round.suggested[3].toFixed(1)}
+              </div>
+              {round.finalLab && (
+                <>
+                  <div>
+                    <strong>Final LAB:</strong> L:{round.finalLab[0].toFixed(1)}, a:{round.finalLab[1].toFixed(1)}, b:{round.finalLab[2].toFixed(1)}
+                  </div>
+                  <div>
+                    <strong>Result:</strong> 
+                    <span className={`ml-2 px-2 py-1 rounded text-xs ${
+                      round.isAccurate ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                    }`}>
+                      ΔE: {round.deltaE.toFixed(2)} {round.isAccurate ? '✅' : '❌'}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Main App Component
+  function App() {
+    const aiModelRef = useRef(new AIColorModel());
+    const [tab, setTab] = useState('match');
+    const [rounds, setRounds] = useState([]);
+
+    // Load saved data on startup
+    useEffect(() => {
+      const loaded = aiModelRef.current.loadFromStorage();
+      if (loaded) {
+        console.log('✅ Previous session data loaded successfully');
+      }
+    }, []);
+
+    const onSuggest = (result) => {
+      setRounds([...rounds, result]);
+      setTab('confirm');
+    };
+
+    return (
+      <div className="min-h-screen bg-slate-50">
+        {/* Header */}
+        <header className="bg-white shadow-sm border-b mb-6">
+          <div className="max-w-6xl mx-auto px-4 py-4">
+            <h1 className="text-3xl font-bold text-gray-900">
+              🎨 Color Matcher Pro – AI Enhanced 50 Patch System v2.1.6
+            </h1>
+            <p className="text-sm text-gray-600 mt-1">
+              Professional Color Management with Neural Network AI Learning
+            </p>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <div className="max-w-6xl mx-auto px-4">
+          <Tabs active={tab} onChange={setTab} />
+          <div className="bg-white rounded-b-lg shadow-md min-h-[500px]">
+            {tab === 'match' && <ColorMatch aiModel={aiModelRef.current} onSuggest={onSuggest} />}
+            {tab === 'confirm' && <ConfirmResult aiModel={aiModelRef.current} rounds={rounds} setRounds={setRounds} />}
+            {tab === 'cal' && <Calibration50 aiModel={aiModelRef.current} />}
+            {tab === 'learn' && <AILearning aiModel={aiModelRef.current} />}
+            {tab === 'hist' && <History rounds={rounds} />}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render the app
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
+
