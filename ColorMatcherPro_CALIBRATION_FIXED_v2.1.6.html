@@ -775,7 +775,8 @@
     loadICCProfile(arrayBuffer, name = '') {
       try {
         const profile = lcmsjs.parse(arrayBuffer);
-        this.iccTransform = lcmsjs.buildTransform(profile, 'lab', 'cmyk');
+        // Use Lab color space (capitalized) for improved precision
+        this.iccTransform = lcmsjs.buildTransform(profile, 'Lab', 'cmyk');
         this.iccProfileName = name;
         this.iccProfileBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
         console.log('✅ ICC profile loaded');
