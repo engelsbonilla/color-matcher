@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node -e \"console.log('No tests specified')\"",
+    "test": "jest",
     "lint": "eslint ."
   },
   "keywords": [],
@@ -13,6 +13,7 @@
   "type": "commonjs",
   "devDependencies": {
     "eslint": "^8.57.0",
-    "eslint-plugin-html": "^7.1.0"
+    "eslint-plugin-html": "^7.1.0",
+    "jest": "^29.7.0"
   }
 }
