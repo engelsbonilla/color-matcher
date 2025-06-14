@@ -45,6 +45,23 @@ color patches to build accurate profiles. The “FIXED” tag denotes improvemen
 in handling device data, while version **2.1.8** includes the latest adjustments
 for more reliable color matching.
 
+## Configuration
+
+The `AIColorModel` accepts optional thresholds for ΔL, Δa and Δb when
+instantiated. These thresholds determine how sensitive the model is when
+converting LAB errors to CMYK adjustments. All three default to `0.5`:
+
+```javascript
+const ai = new AIColorModel({
+  deltaLThreshold: 0.5,
+  deltaAThreshold: 0.5,
+  deltaBThreshold: 0.5
+});
+```
+
+Adjust these values to fine‑tune how aggressively suggestions respond to small
+LAB differences.
+
 ## Development
 
 The project ships with an ESLint setup that checks HTML files using the
