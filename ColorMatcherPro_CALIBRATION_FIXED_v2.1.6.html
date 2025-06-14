@@ -215,6 +215,8 @@
       this.neuralModel = null;
       this.linearModel = null;
       this.iccTransform = null;
+      this.iccProfileName = '';
+      this.iccProfileBase64 = '';
       this.isTraining = false;
       this.modelStats = {
         accuracy: 0,
@@ -627,15 +629,15 @@
       // Red/Green adjustments (a* axis)
       if (Math.abs(deltaA) > 0.5) {
         const aFactor = deltaA * 0.5 * scaleFactor;
-        adjustments[1] -= aFactor; // Magenta primarily affects a*
-        adjustments[0] += aFactor * 0.3; // Cyan secondary effect
+        adjustments[1] += aFactor; // Magenta primarily affects a*
+        adjustments[0] -= aFactor * 0.3; // Cyan secondary effect
       }
 
       // Yellow/Blue adjustments (b* axis)
       if (Math.abs(deltaB) > 0.5) {
         const bFactor = deltaB * 0.5 * scaleFactor;
-        adjustments[2] -= bFactor; // Yellow primarily affects b*
-        adjustments[0] += bFactor * 0.2; // Cyan secondary effect
+        adjustments[2] += bFactor; // Yellow primarily affects b*
+        adjustments[0] -= bFactor * 0.2; // Cyan secondary effect
       }
 
       // Apply learning from historical data if available
@@ -680,10 +682,10 @@
           ];
 
           // Convert error direction to CMYK adjustment direction
-          adjustments[0] += errorDirection[1] * 0.2 * weight; // a* -> Cyan
-          adjustments[1] += -errorDirection[1] * 0.4 * weight; // a* -> Magenta
-          adjustments[2] += -errorDirection[2] * 0.4 * weight; // b* -> Yellow
-          adjustments[3] += -errorDirection[0] * 0.3 * weight; // L* -> Black
+          adjustments[0] -= errorDirection[1] * 0.2 * weight; // a* -> Cyan
+          adjustments[1] += errorDirection[1] * 0.4 * weight; // a* -> Magenta
+          adjustments[2] += errorDirection[2] * 0.4 * weight; // b* -> Yellow
+          adjustments[3] -= errorDirection[0] * 0.3 * weight; // L* -> Black
 
           totalWeight += weight;
         }
@@ -713,6 +715,8 @@
         learningData: this.learningData,
         realWorldResults: this.realWorldResults,
         modelStats: this.modelStats,
+        iccProfileName: this.iccProfileName,
+        iccProfileBase64: this.iccProfileBase64,
         version: '2.1.8',
         timestamp: Date.now(),
         metadata: {
@@ -739,6 +743,18 @@
           this.learningData = data.learningData || [];
           this.realWorldResults = data.realWorldResults || [];
           this.modelStats = { ...this.modelStats, ...data.modelStats };
+          this.iccProfileName = data.iccProfileName || '';
+          this.iccProfileBase64 = data.iccProfileBase64 || '';
+          if (this.iccProfileBase64) {
+            try {
+              const binary = atob(this.iccProfileBase64);
+              const bytes = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+              this.loadICCProfile(bytes.buffer, this.iccProfileName);
+            } catch (err) {
+              console.error('❌ Failed to restore ICC profile:', err);
+            }
+          }
           
           console.log(`✅ Data loaded successfully: ${this.calibrationData.length} calibration + ${this.learningData.length} learning + ${this.realWorldResults.length} results`);
           
@@ -756,15 +772,20 @@
     }
 
     // Load ICC profile and create Lab->CMYK transform
-    loadICCProfile(arrayBuffer) {
+    loadICCProfile(arrayBuffer, name = '') {
       try {
         const profile = lcmsjs.parse(arrayBuffer);
-        this.iccTransform = lcmsjs.buildTransform(profile, 'lab', 'cmyk');
+        // Use Lab color space (capitalized) for improved precision
+        this.iccTransform = lcmsjs.buildTransform(profile, 'Lab', 'cmyk');
+        this.iccProfileName = name;
+        this.iccProfileBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
         console.log('✅ ICC profile loaded');
         return true;
       } catch (err) {
         console.error('❌ Failed to load ICC profile:', err);
         this.iccTransform = null;
+        this.iccProfileName = '';
+        this.iccProfileBase64 = '';
         return false;
       }
     }
@@ -937,8 +958,8 @@
               const labDiff = originalLab.map((val, i) => val - printedLab[i]);
               const adjustment = [
                 -labDiff[1] * 0.3, // a* affects magenta/cyan
-                -labDiff[1] * 0.4, // a* primarily affects magenta
-                -labDiff[2] * 0.4, // b* affects yellow
+                labDiff[1] * 0.4,  // a* primarily affects magenta
+                labDiff[2] * 0.4,  // b* affects yellow
                 -labDiff[0] * 0.3  // L* affects black
               ];
               const suggested = cmykInput.map((val, i) => 
@@ -1821,25 +1842,45 @@
   // Settings Component for ICC profile loading
   function Settings({ aiModel }) {
     const [loaded, setLoaded] = React.useState(aiModel.getModelStats().iccLoaded);
+    const [fileName, setFileName] = React.useState(aiModel.iccProfileName || '');
 
     const handleFile = (e) => {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const ok = aiModel.loadICCProfile(ev.target.result);
+        const ok = aiModel.loadICCProfile(ev.target.result, file.name);
         setLoaded(ok);
+        if (ok) setFileName(file.name);
+        aiModel.saveToStorage();
       };
       reader.readAsArrayBuffer(file);
+    };
+
+    const handleClear = () => {
+      aiModel.iccTransform = null;
+      aiModel.iccProfileName = '';
+      aiModel.iccProfileBase64 = '';
+      setLoaded(false);
+      setFileName('');
+      aiModel.saveToStorage();
     };
 
     return (
       <div className="p-6 space-y-4">
         <div className="bg-white p-4 rounded-lg shadow-md border">
           <label className="block font-medium mb-2">ICC Profile</label>
-          <input type="file" accept=".icc,.icm" onChange={handleFile} />
+          <div className="flex items-center space-x-2">
+            <input type="file" accept=".icc,.icm" onChange={handleFile} />
+            <button
+              className="px-2 py-1 bg-red-500 text-white rounded"
+              onClick={handleClear}
+            >
+              Clear ICC Profile
+            </button>
+          </div>
           {loaded ? (
-            <p className="text-green-600 mt-2">Profile loaded</p>
+            <p className="text-green-600 mt-2">Profile loaded{fileName ? `: ${fileName}` : ''}</p>
           ) : (
             <p className="text-gray-500 mt-2">No profile loaded</p>
           )}
