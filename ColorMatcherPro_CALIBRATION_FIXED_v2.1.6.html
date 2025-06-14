@@ -12,6 +12,8 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/numeric@1.2.6/numeric.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <!-- lcmsjs for ICC profile transforms -->
+  <script src="https://cdn.jsdelivr.net/npm/lcmsjs@1.0.0/dist/lcms.min.js"></script>
   
   <style>
     .number-input {
@@ -212,6 +214,9 @@
       this.realWorldResults = [];
       this.neuralModel = null;
       this.linearModel = null;
+      this.iccTransform = null;
+      this.iccProfileName = '';
+      this.iccProfileBase64 = '';
       this.isTraining = false;
       this.modelStats = {
         accuracy: 0,
@@ -492,10 +497,19 @@
     }
 
     // CRITICAL: Predict CMYK adjustments using trained models
-    async predictCMYKAdjustment(targetLab, printedLab, currentCmyk) {
+  async predictCMYKAdjustment(targetLab, printedLab, currentCmyk) {
       console.log('🔍 Predicting CMYK adjustment:', { targetLab, printedLab, currentCmyk });
 
       try {
+        let baseCmyk = null;
+        if (this.iccTransform) {
+          try {
+            baseCmyk = this.iccTransform.apply(targetLab);
+            currentCmyk = baseCmyk;
+          } catch (e) {
+            console.warn('⚠️ ICC transform failed:', e);
+          }
+        }
         // Determine if we have a valid measurement
         const hasMeasurement = printedLab && printedLab.some(v => v !== 0);
         let predictedLab = [...printedLab];
@@ -688,7 +702,9 @@
         learningIterations: this.learningData.length,
         realWorldResults: this.realWorldResults.length,
         isTraining: this.isTraining,
-        successRate: this.modelStats.totalAttempts > 0 ? 
+        iccLoaded: !!this.iccTransform,
+        iccProfileName: this.iccProfileName,
+        successRate: this.modelStats.totalAttempts > 0 ?
           (this.modelStats.successfulMatches / this.modelStats.totalAttempts * 100) : 0
       };
     }
@@ -700,6 +716,8 @@
         learningData: this.learningData,
         realWorldResults: this.realWorldResults,
         modelStats: this.modelStats,
+        iccProfileName: this.iccProfileName,
+        iccProfileBase64: this.iccProfileBase64,
         version: '2.1.8',
         timestamp: Date.now(),
         metadata: {
@@ -721,11 +739,25 @@
         const saved = localStorage.getItem('colorMatcherAI');
         if (saved) {
           const data = JSON.parse(saved);
-          
+
           this.calibrationData = data.calibrationData || [];
           this.learningData = data.learningData || [];
           this.realWorldResults = data.realWorldResults || [];
           this.modelStats = { ...this.modelStats, ...data.modelStats };
+          this.iccProfileName = data.iccProfileName || '';
+          this.iccProfileBase64 = data.iccProfileBase64 || '';
+          if (this.iccProfileBase64) {
+            const buf = this.base64ToArrayBuffer(this.iccProfileBase64);
+            try {
+              const profile = lcmsjs.parse(buf);
+              this.iccTransform = lcmsjs.buildTransform(profile, 'lab', 'cmyk');
+            } catch (e) {
+              console.warn('⚠️ Failed to restore ICC profile:', e);
+              this.iccTransform = null;
+              this.iccProfileName = '';
+              this.iccProfileBase64 = '';
+            }
+          }
           
           console.log(`✅ Data loaded successfully: ${this.calibrationData.length} calibration + ${this.learningData.length} learning + ${this.realWorldResults.length} results`);
           
@@ -740,6 +772,44 @@
         console.error('❌ Error loading saved data:', error);
       }
       return false;
+    }
+
+    // Load ICC profile and create Lab->CMYK transform
+    loadICCProfile(arrayBuffer, fileName = '') {
+      try {
+        const profile = lcmsjs.parse(arrayBuffer);
+        this.iccTransform = lcmsjs.buildTransform(profile, 'lab', 'cmyk');
+        this.iccProfileName = fileName;
+        this.iccProfileBase64 = this.arrayBufferToBase64(arrayBuffer);
+        console.log('✅ ICC profile loaded');
+        return true;
+      } catch (err) {
+        console.error('❌ Failed to load ICC profile:', err);
+        this.iccTransform = null;
+        this.iccProfileName = '';
+        this.iccProfileBase64 = '';
+        return false;
+      }
+    }
+
+    // Helpers to convert ArrayBuffer <-> Base64 for storage
+    arrayBufferToBase64(buffer) {
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary);
+    }
+
+    base64ToArrayBuffer(base64) {
+      const binary = atob(base64);
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes.buffer;
     }
   }
 
@@ -837,7 +907,8 @@
       { id: 'confirm', label: 'Confirm Result', icon: '✅' },
       { id: 'cal', label: 'Calibration', icon: '📊' },
       { id: 'learn', label: 'AI Learning', icon: '🧠' },
-      { id: 'hist', label: 'History', icon: '📈' }
+      { id: 'hist', label: 'History', icon: '📈' },
+      { id: 'settings', label: 'Settings', icon: '⚙️' }
     ];
 
     return (
@@ -1790,6 +1861,42 @@
     );
   }
 
+  // Settings Component for ICC profile loading
+  function Settings({ aiModel }) {
+    const stats = aiModel.getModelStats();
+    const [loaded, setLoaded] = React.useState(stats.iccLoaded);
+    const [fileName, setFileName] = React.useState(stats.iccProfileName || '');
+
+    const handleFile = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const ok = aiModel.loadICCProfile(ev.target.result, file.name);
+        setLoaded(ok);
+        if (ok) {
+          setFileName(file.name);
+          aiModel.saveToStorage();
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    };
+
+    return (
+      <div className="p-6 space-y-4">
+        <div className="bg-white p-4 rounded-lg shadow-md border">
+          <label className="block font-medium mb-2">ICC Profile</label>
+          <input type="file" accept=".icc,.icm" onChange={handleFile} />
+          {loaded ? (
+            <p className="text-green-600 mt-2">Loaded: {fileName}</p>
+          ) : (
+            <p className="text-gray-500 mt-2">No profile loaded</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // CRITICAL: Main App Component with proper state management
   function App() {
     const aiModelRef = useRef(new AIColorModel());
@@ -1853,6 +1960,7 @@
             {tab === 'cal' && <Calibration50 aiModel={aiModelRef.current} />}
             {tab === 'learn' && <AILearning aiModel={aiModelRef.current} />}
             {tab === 'hist' && <History rounds={rounds} />}
+            {tab === 'settings' && <Settings aiModel={aiModelRef.current} />}
           </div>
         </div>
       </div>
