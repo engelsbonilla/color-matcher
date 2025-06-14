@@ -44,3 +44,9 @@ repository. It contains the calibration UI and logic for measuring and learning
 color patches to build accurate profiles. The “FIXED” tag denotes improvements
 in handling device data, while version **2.1.8** includes the latest adjustments
 for more reliable color matching.
+
+## Development
+
+The project ships with an ESLint setup that checks HTML files using the
+`eslint-plugin-html` plugin. Run `npm install` to install the required
+development dependencies before invoking `npm run lint`.
