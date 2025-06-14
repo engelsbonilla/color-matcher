@@ -561,8 +561,14 @@
               coeff.reduce((sum, c, i) => sum + c * (features[i] || 0), 0)
             );
           } else {
-            console.log('🎨 Using color theory fallback');
-            predictedLab = hasMeasurement ? [...printedLab] : [...targetLab];
+            // No trained model available
+            if (hasMeasurement) {
+              console.log('📏 Using measured LAB values for error calculation');
+              predictedLab = [...printedLab];
+            } else {
+              console.log('🎨 Using color theory fallback');
+              predictedLab = [...targetLab];
+            }
           }
         } else if (hasMeasurement) {
           console.log('📏 Using measured LAB values for error calculation');
@@ -1552,10 +1558,18 @@
       try {
         const success = aiModel.addCalibrationData(patch.cmyk, labInput);
         if (success) {
-          setCompletedPatches(prev => new Set([...prev, selectedPatch]));
+          const newCompleted = new Set([...completedPatches, selectedPatch]);
+          setCompletedPatches(newCompleted);
           setSelectedPatch(null);
           setLabInput([0, 0, 0]);
           console.log(`✅ Patch ${selectedPatch} saved successfully`);
+
+          // When all patches are saved, retrain the model using the
+          // collected calibration data to build the linear fallback.
+          if (newCompleted.size === PATCHES.length) {
+            console.log('🏁 Calibration complete – training linear model');
+            aiModel.trainLinearModel(aiModel.calibrationData);
+          }
         } else {
           alert('❌ Error saving calibration data. Please try again.');
         }
