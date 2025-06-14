@@ -215,6 +215,7 @@
       this.neuralModel = null;
       this.linearModel = null;
       this.iccTransform = null;
+      this.iccProfileName = '';
       this.isTraining = false;
       this.modelStats = {
         accuracy: 0,
@@ -701,6 +702,7 @@
         realWorldResults: this.realWorldResults.length,
         isTraining: this.isTraining,
         iccLoaded: !!this.iccTransform,
+        iccProfileName: this.iccProfileName,
         successRate: this.modelStats.totalAttempts > 0 ?
           (this.modelStats.successfulMatches / this.modelStats.totalAttempts * 100) : 0
       };
@@ -756,15 +758,17 @@
     }
 
     // Load ICC profile and create Lab->CMYK transform
-    loadICCProfile(arrayBuffer) {
+    loadICCProfile(arrayBuffer, fileName = '') {
       try {
         const profile = lcmsjs.parse(arrayBuffer);
         this.iccTransform = lcmsjs.buildTransform(profile, 'lab', 'cmyk');
+        this.iccProfileName = fileName;
         console.log('✅ ICC profile loaded');
         return true;
       } catch (err) {
         console.error('❌ Failed to load ICC profile:', err);
         this.iccTransform = null;
+        this.iccProfileName = '';
         return false;
       }
     }
@@ -1820,15 +1824,18 @@
 
   // Settings Component for ICC profile loading
   function Settings({ aiModel }) {
-    const [loaded, setLoaded] = React.useState(aiModel.getModelStats().iccLoaded);
+    const stats = aiModel.getModelStats();
+    const [loaded, setLoaded] = React.useState(stats.iccLoaded);
+    const [fileName, setFileName] = React.useState(stats.iccProfileName || '');
 
     const handleFile = (e) => {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const ok = aiModel.loadICCProfile(ev.target.result);
+        const ok = aiModel.loadICCProfile(ev.target.result, file.name);
         setLoaded(ok);
+        if (ok) setFileName(file.name);
       };
       reader.readAsArrayBuffer(file);
     };
@@ -1839,7 +1846,7 @@
           <label className="block font-medium mb-2">ICC Profile</label>
           <input type="file" accept=".icc,.icm" onChange={handleFile} />
           {loaded ? (
-            <p className="text-green-600 mt-2">Profile loaded</p>
+            <p className="text-green-600 mt-2">Loaded: {fileName}</p>
           ) : (
             <p className="text-gray-500 mt-2">No profile loaded</p>
           )}
