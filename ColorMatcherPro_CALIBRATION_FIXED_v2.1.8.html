@@ -449,7 +449,6 @@
     // Train linear model fallback
     trainLinearModel(samples) {
       try {
-        if (samples.length < 3) return;
 
         console.log('📊 Training linear model with', samples.length, 'samples');
 
@@ -521,13 +520,11 @@
             console.warn('⚠️ ICC transform failed:', e);
           }
         }
-        // Determine if we have a valid measurement
+        // Always attempt to predict the printed LAB values
         const hasMeasurement = printedLab && printedLab.some(v => v !== 0);
-        let predictedLab = [...printedLab];
+        let predictedLab;
 
-        if (!hasMeasurement) {
-          // No measurement yet, use prediction models
-          if (this.neuralModel && this.modelStats.neuralNetworkActive) {
+        if (this.neuralModel && this.modelStats.neuralNetworkActive) {
             console.log('🧠 Using neural network for prediction');
             const features = [
               ...currentCmyk,
@@ -565,10 +562,14 @@
             );
           } else {
             console.log('🎨 Using color theory fallback');
+            predictedLab = hasMeasurement ? [...printedLab] : [...targetLab];
           }
-        } else {
-          // Measured LAB values available; skip prediction
+        } else if (hasMeasurement) {
           console.log('📏 Using measured LAB values for error calculation');
+          predictedLab = [...printedLab];
+        } else {
+          console.log('🎨 Using color theory fallback');
+          predictedLab = [...targetLab];
         }
 
         // Calculate LAB error using either prediction or measurement
@@ -1934,9 +1935,9 @@
   // CRITICAL: Main App Component with proper state management
   function App() {
     const aiModelRef = useRef(new AIColorModel({
-      deltaLThreshold: 0.5,
-      deltaAThreshold: 0.5,
-      deltaBThreshold: 0.5
+      deltaLThreshold: 0,
+      deltaAThreshold: 0,
+      deltaBThreshold: 0
     }));
     const [tab, setTab] = useState('match');
     const [rounds, setRounds] = useState([]);
