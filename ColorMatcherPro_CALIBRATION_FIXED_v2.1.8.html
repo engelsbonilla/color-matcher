@@ -586,9 +586,13 @@
         }
 
         // Apply scaled adjustments and clamp final values
-        const suggestedCmyk = currentCmyk.map((v, i) =>
-          clamp(v + cmykAdjustment[i] * s, 0, 100)
-        );
+        const suggestedCmyk = currentCmyk.map((v, i) => {
+          const rawDelta = cmykAdjustment[i] * s;
+          const unclamped = v + rawDelta;
+          const final = clamp(unclamped, 0, 100);
+          console.log({index: i, rawDelta, unclamped, final});
+          return final;
+        });
 
         const result = {
           suggested: suggestedCmyk,
