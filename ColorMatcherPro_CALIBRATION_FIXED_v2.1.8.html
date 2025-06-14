@@ -629,15 +629,15 @@
       // Red/Green adjustments (a* axis)
       if (Math.abs(deltaA) > 0.5) {
         const aFactor = deltaA * 0.5 * scaleFactor;
-        adjustments[1] -= aFactor; // Magenta primarily affects a*
-        adjustments[0] += aFactor * 0.3; // Cyan secondary effect
+        adjustments[1] += aFactor; // Magenta primarily affects a*
+        adjustments[0] -= aFactor * 0.3; // Cyan secondary effect
       }
 
       // Yellow/Blue adjustments (b* axis)
       if (Math.abs(deltaB) > 0.5) {
         const bFactor = deltaB * 0.5 * scaleFactor;
-        adjustments[2] -= bFactor; // Yellow primarily affects b*
-        adjustments[0] += bFactor * 0.2; // Cyan secondary effect
+        adjustments[2] += bFactor; // Yellow primarily affects b*
+        adjustments[0] -= bFactor * 0.2; // Cyan secondary effect
       }
 
       // Apply learning from historical data if available
