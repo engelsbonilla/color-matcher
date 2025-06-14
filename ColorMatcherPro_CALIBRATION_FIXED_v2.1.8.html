@@ -211,7 +211,13 @@
 
   // Enhanced AI Color Model with proper data flow
   class AIColorModel {
-    constructor() {
+    constructor(options = {}) {
+      const {
+        deltaLThreshold = 0.5,
+        deltaAThreshold = 0.5,
+        deltaBThreshold = 0.5
+      } = options;
+
       this.calibrationData = [];
       this.learningData = [];
       this.realWorldResults = [];
@@ -229,7 +235,11 @@
         successfulMatches: 0,
         totalAttempts: 0
       };
-      
+
+      this.deltaLThreshold = deltaLThreshold;
+      this.deltaAThreshold = deltaAThreshold;
+      this.deltaBThreshold = deltaBThreshold;
+
       console.log('🤖 AIColorModel initialized');
     }
 
@@ -626,7 +636,7 @@
       const scaleFactor = Math.min(2.0, Math.max(0.1, errorMagnitude / 10));
 
       // Lightness adjustments (L* axis)
-      if (Math.abs(deltaL) > 0.5) {
+      if (Math.abs(deltaL) > this.deltaLThreshold) {
         const lightnessFactor = deltaL * 0.4 * scaleFactor;
         
         // Primary adjustment through K (black)
@@ -642,14 +652,14 @@
       }
 
       // Red/Green adjustments (a* axis)
-      if (Math.abs(deltaA) > 0.5) {
+      if (Math.abs(deltaA) > this.deltaAThreshold) {
         const aFactor = deltaA * 0.5 * scaleFactor;
         adjustments[1] += aFactor; // Magenta primarily affects a*
         adjustments[0] -= aFactor * 0.3; // Cyan secondary effect
       }
 
       // Yellow/Blue adjustments (b* axis)
-      if (Math.abs(deltaB) > 0.5) {
+      if (Math.abs(deltaB) > this.deltaBThreshold) {
         const bFactor = deltaB * 0.5 * scaleFactor;
         adjustments[2] += bFactor; // Yellow primarily affects b*
         adjustments[0] -= bFactor * 0.2; // Cyan secondary effect
@@ -1915,7 +1925,11 @@
 
   // CRITICAL: Main App Component with proper state management
   function App() {
-    const aiModelRef = useRef(new AIColorModel());
+    const aiModelRef = useRef(new AIColorModel({
+      deltaLThreshold: 0.5,
+      deltaAThreshold: 0.5,
+      deltaBThreshold: 0.5
+    }));
     const [tab, setTab] = useState('match');
     const [rounds, setRounds] = useState([]);
     const [nextIteration, setNextIteration] = useState(null);
