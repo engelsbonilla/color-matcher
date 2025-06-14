@@ -276,7 +276,7 @@
     }
 
     // Add learning data from test results
-    addLearningData(cmyk, targetLab, printedLab, accurate, deltaE) {
+    async addLearningData(cmyk, targetLab, printedLab, accurate, deltaE) {
       console.log('🧠 Adding learning data:', { cmyk, targetLab, printedLab, accurate, deltaE });
       
       const sample = {
@@ -309,9 +309,9 @@
       
       // Auto-save after each learning iteration
       this.saveToStorage();
-      
+
       // Retrain with combined data
-      this.trainModel();
+      await this.trainModel();
     }
 
     // CRITICAL: Train model on BOTH calibration + learning data
@@ -1237,13 +1237,16 @@
         console.log('🔍 Confirming result:', { deltaE, isAccurate, finalLab, targetLab: currentResult.targetLab });
         
         // Add learning data to AI with accuracy information
-        aiModel.addLearningData(
+        await aiModel.addLearningData(
           currentResult.suggested,
           currentResult.targetLab,
           finalLab,
           isAccurate,
           deltaE
         );
+
+        // Ensure model retraining completes before proceeding
+        await aiModel.trainModel(); // uses updated calibration & learning data
         
         // Update the current result with final data
         const updatedResult = {
