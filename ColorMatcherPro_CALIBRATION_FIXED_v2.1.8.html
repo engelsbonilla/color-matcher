@@ -947,7 +947,10 @@
               printedLab,
               cmykInput
             );
-            setSuggestedCmyk(result.suggested);
+            const dampened = result.suggested.map(
+              (v, i) => cmykInput[i] + (v - cmykInput[i]) * 0.5
+            );
+            setSuggestedCmyk(dampened);
             setPredictionDetails(result);
           } catch (error) {
             console.error('❌ Calculation error:', error);
@@ -1265,15 +1268,19 @@
             finalLab,
             currentResult.suggested
           );
-          
+
           console.log('🤖 New AI suggestion generated:', newSuggestion);
-          
+
+          const dampened = newSuggestion.suggested.map(
+            (v, i) => currentResult.suggested[i] + (v - currentResult.suggested[i]) * 0.5
+          );
+
           // Create new iteration data for Color Match tab
           const newIterationData = {
             targetLab: [...currentResult.targetLab],
             printedLab: [...finalLab],
             inputCmyk: [...currentResult.suggested],
-            suggested: [...newSuggestion.suggested],
+            suggested: dampened,
             predictionDetails: newSuggestion,
             iteration: (currentResult.iteration || 1) + 1,
             previousDeltaE: deltaE
