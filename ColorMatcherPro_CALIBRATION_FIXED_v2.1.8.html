@@ -68,6 +68,9 @@
   <script type="text/babel" data-presets="env,react">
   const { useState, useEffect, useRef } = React;
 
+  // Reusable helper to clamp a value within bounds
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
   // Enhanced Color Algorithms with proper implementations
   const ColorAlgorithms = {
     // CIEDE2000 Delta E calculation
@@ -570,9 +573,21 @@
         // Convert LAB error to CMYK adjustments using enhanced color theory
         const cmykAdjustment = this.labErrorToCMYKAdjustment(labError, currentCmyk, targetLab);
 
-        // Apply adjustments with bounds checking
-        const suggestedCmyk = currentCmyk.map((value, i) => 
-          Math.max(0, Math.min(100, value + cmykAdjustment[i]))
+        // Calculate raw suggestion and find a single scale factor to keep all channels within bounds
+        const rawSug = currentCmyk.map((v, i) => v + cmykAdjustment[i]);
+        let s = 1;
+        for (let i = 0; i < 4; i++) {
+          const diff = rawSug[i] - currentCmyk[i];
+          if (diff > 0) {
+            s = Math.min(s, (100 - currentCmyk[i]) / diff);
+          } else if (diff < 0) {
+            s = Math.min(s, (0 - currentCmyk[i]) / diff);
+          }
+        }
+
+        // Apply scaled adjustments and clamp final values
+        const suggestedCmyk = currentCmyk.map((v, i) =>
+          clamp(v + cmykAdjustment[i] * s, 0, 100)
         );
 
         const result = {
