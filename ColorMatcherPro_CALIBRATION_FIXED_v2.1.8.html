@@ -681,11 +681,11 @@
             data.targetLab[2] - data.printedLab[2]
           ];
 
-          // Convert error direction to CMYK adjustment direction
-          adjustments[0] += errorDirection[1] * 0.2 * weight; // a* -> Cyan
-          adjustments[1] += -errorDirection[1] * 0.4 * weight; // a* -> Magenta
-          adjustments[2] += -errorDirection[2] * 0.4 * weight; // b* -> Yellow
-          adjustments[3] += -errorDirection[0] * 0.3 * weight; // L* -> Black
+            // Convert error direction to CMYK adjustment direction
+            adjustments[0] -= errorDirection[1] * 0.2 * weight; // a* -> Cyan
+            adjustments[1] += errorDirection[1] * 0.4 * weight; // a* -> Magenta
+            adjustments[2] += errorDirection[2] * 0.4 * weight; // b* -> Yellow
+            adjustments[3] += -errorDirection[0] * 0.3 * weight; // L* -> Black
 
           totalWeight += weight;
         }
