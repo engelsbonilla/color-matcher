@@ -133,7 +133,7 @@
     }
   };
 
-  // CRITICAL: 50 Calibration Patches with unique CMYK values (MOVED TO TOP)
+  // CRITICAL: 50 Calibration Patches with unique CMYK values
   const PATCHES = [
     // Primary Colors (4)
     { name: "Pure Cyan", cmyk: [100, 0, 0, 0] },
@@ -171,13 +171,13 @@
     { name: "50% Cyan", cmyk: [50, 0, 0, 0] },
     { name: "75% Cyan", cmyk: [75, 0, 0, 0] },
     { name: "25% Magenta", cmyk: [0, 25, 0, 0] },
-    { name: "50% Magenta", cmyk: [0, 50, 0, 0] }, // FIXED: Unique values
+    { name: "50% Magenta", cmyk: [0, 50, 0, 0] },
     { name: "75% Magenta", cmyk: [0, 75, 0, 0] },
     { name: "25% Yellow", cmyk: [0, 0, 25, 0] },
     { name: "50% Yellow", cmyk: [0, 0, 50, 0] },
     { name: "75% Yellow", cmyk: [0, 0, 75, 0] },
     { name: "25% Black", cmyk: [0, 0, 0, 25] },
-    { name: "50% Black", cmyk: [0, 0, 0, 55] }, // FIXED: Unique values (was 50, now 55)
+    { name: "50% Black", cmyk: [0, 0, 0, 55] }, // FIXED: Unique values
     { name: "75% Black", cmyk: [0, 0, 0, 75] },
     
     // Skin Tones (5)
@@ -689,7 +689,7 @@
         learningData: this.learningData,
         realWorldResults: this.realWorldResults,
         modelStats: this.modelStats,
-        version: '2.1.6',
+        version: '2.1.8',
         timestamp: Date.now(),
         metadata: {
           totalSessions: (JSON.parse(localStorage.getItem('colorMatcherAI') || '{}').metadata?.totalSessions || 0) + 1,
@@ -788,7 +788,7 @@
         ...parsedData,
         exportMetadata: {
           exportDate: new Date().toISOString(),
-          version: '2.1.6',
+          version: '2.1.8',
           exportedBy: 'ColorMatcherPro',
           totalCalibrationPatches: parsedData.calibrationData?.length || 0,
           totalLearningIterations: parsedData.learningData?.length || 0,
@@ -849,14 +849,29 @@
     );
   };
 
-  // Color Match Component
-  function ColorMatch({ aiModel, onSuggest }) {
+  // CRITICAL: Color Match Component with proper state management
+  function ColorMatch({ aiModel, onSuggest, nextIteration, setNextIteration }) {
     const [originalLab, setOriginalLab] = useState([0, 0, 0]);
     const [printedLab, setPrintedLab] = useState([0, 0, 0]);
     const [cmykInput, setCmykInput] = useState([0, 0, 0, 0]);
     const [suggestedCmyk, setSuggestedCmyk] = useState([0, 0, 0, 0]);
     const [isCalculating, setIsCalculating] = useState(false);
     const [predictionDetails, setPredictionDetails] = useState(null);
+
+    // CRITICAL: Load next iteration data when available
+    useEffect(() => {
+      if (nextIteration) {
+        console.log('🔄 Loading next iteration data:', nextIteration);
+        setOriginalLab([...nextIteration.targetLab]);
+        setPrintedLab([...nextIteration.printedLab]);
+        setCmykInput([...nextIteration.inputCmyk]);
+        setSuggestedCmyk([...nextIteration.suggested]);
+        setPredictionDetails(nextIteration.predictionDetails);
+        
+        // Clear the next iteration data
+        setNextIteration(null);
+      }
+    }, [nextIteration, setNextIteration]);
 
     // Auto-calculate suggestions when all values are present
     useEffect(() => {
@@ -1135,8 +1150,8 @@
     );
   }
 
-  // FIXED: Confirm Result Component with proper navigation
-  function ConfirmResult({ aiModel, rounds, setRounds, onNewIteration }) {
+  // CRITICAL: FIXED Confirm Result Component with proper workflow
+  function ConfirmResult({ aiModel, rounds, setRounds, onNewIteration, setActiveTab }) {
     const [finalLab, setFinalLab] = useState([0, 0, 0]);
     const [isProcessing, setIsProcessing] = useState(false);
 
@@ -1153,74 +1168,90 @@
     const handleConfirm = async () => {
       setIsProcessing(true);
       
-      const deltaE = ColorAlgorithms.deltaE00(currentResult.targetLab, finalLab);
-      const isAccurate = deltaE <= 2.0;
-      
-      // Add learning data to AI with accuracy information
-      aiModel.addLearningData(
-        currentResult.suggested,
-        currentResult.targetLab,
-        finalLab,
-        isAccurate,
-        deltaE
-      );
-      
-      // Update the current result with final data
-      const updatedResult = {
-        ...currentResult,
-        finalLab: [...finalLab],
-        deltaE,
-        isAccurate,
-        completedAt: new Date().toLocaleString()
-      };
-      
-      // Update rounds
-      const updatedRounds = [...rounds];
-      updatedRounds[updatedRounds.length - 1] = updatedResult;
-      setRounds(updatedRounds);
-      
-      setIsProcessing(false);
-      
-      if (!isAccurate) {
-        // FIXED: Trigger new iteration with improved values
-        alert(`ΔE: ${deltaE.toFixed(2)} - Starting next iteration with AI-improved values.`);
+      try {
+        const deltaE = ColorAlgorithms.deltaE00(currentResult.targetLab, finalLab);
+        const isAccurate = deltaE <= 2.0;
         
-        // Get new AI suggestion based on the learning
-        try {
+        console.log('🔍 Confirming result:', { deltaE, isAccurate, finalLab, targetLab: currentResult.targetLab });
+        
+        // Add learning data to AI with accuracy information
+        aiModel.addLearningData(
+          currentResult.suggested,
+          currentResult.targetLab,
+          finalLab,
+          isAccurate,
+          deltaE
+        );
+        
+        // Update the current result with final data
+        const updatedResult = {
+          ...currentResult,
+          finalLab: [...finalLab],
+          deltaE,
+          isAccurate,
+          completedAt: new Date().toLocaleString()
+        };
+        
+        // Update rounds
+        const updatedRounds = [...rounds];
+        updatedRounds[updatedRounds.length - 1] = updatedResult;
+        setRounds(updatedRounds);
+        
+        if (!isAccurate) {
+          console.log('🔄 Result not accurate, generating new iteration...');
+          
+          // CRITICAL FIX: Get new AI suggestion based on the learning
           const newSuggestion = await aiModel.predictCMYKAdjustment(
             currentResult.targetLab,
             finalLab,
             currentResult.suggested
           );
           
-          // Create new iteration result
-          const newIterationResult = {
-            id: Date.now() + 1,
+          console.log('🤖 New AI suggestion generated:', newSuggestion);
+          
+          // Create new iteration data for Color Match tab
+          const newIterationData = {
             targetLab: [...currentResult.targetLab],
             printedLab: [...finalLab],
             inputCmyk: [...currentResult.suggested],
             suggested: [...newSuggestion.suggested],
-            timestamp: new Date().toLocaleString(),
             predictionDetails: newSuggestion,
-            iteration: (currentResult.iteration || 1) + 1
+            iteration: (currentResult.iteration || 1) + 1,
+            previousDeltaE: deltaE
           };
           
-          // Add to rounds and trigger callback
-          setRounds([...updatedRounds, newIterationResult]);
+          console.log('📝 New iteration data created:', newIterationData);
           
-          // Show the new suggestion
-          alert(`🤖 AI has learned from this result!\n\nNew Iteration ${newIterationResult.iteration}:\nSuggested CMYK: C:${newSuggestion.suggested[0].toFixed(1)} M:${newSuggestion.suggested[1].toFixed(1)} Y:${newSuggestion.suggested[2].toFixed(1)} K:${newSuggestion.suggested[3].toFixed(1)}\nConfidence: ${Math.round(newSuggestion.confidence)}%\n\nPrint these values and measure the result.`);
+          // Show detailed feedback to user
+          const improvementMessage = `🤖 AI has learned from this result and generated Iteration ${newIterationData.iteration}!\n\n` +
+            `Previous Result: ΔE ${deltaE.toFixed(2)} (Target: ≤2.0)\n\n` +
+            `NEW SUGGESTED CMYK VALUES:\n` +
+            `• Cyan: ${newSuggestion.suggested[0].toFixed(1)}% (${newSuggestion.adjustment[0] > 0 ? '+' : ''}${newSuggestion.adjustment[0].toFixed(1)})\n` +
+            `• Magenta: ${newSuggestion.suggested[1].toFixed(1)}% (${newSuggestion.adjustment[1] > 0 ? '+' : ''}${newSuggestion.adjustment[1].toFixed(1)})\n` +
+            `• Yellow: ${newSuggestion.suggested[2].toFixed(1)}% (${newSuggestion.adjustment[2] > 0 ? '+' : ''}${newSuggestion.adjustment[2].toFixed(1)})\n` +
+            `• Black: ${newSuggestion.suggested[3].toFixed(1)}% (${newSuggestion.adjustment[3] > 0 ? '+' : ''}${newSuggestion.adjustment[3].toFixed(1)})\n\n` +
+            `AI Method: ${newSuggestion.method}\n` +
+            `Confidence: ${Math.round(newSuggestion.confidence)}%\n\n` +
+            `Switching to Color Match tab with new values...`;
           
-        } catch (error) {
-          console.error('❌ Error generating new iteration:', error);
-          alert('❌ Error generating new iteration. Please try again.');
+          alert(improvementMessage);
+          
+          // CRITICAL: Pass new iteration data to Color Match and switch tabs
+          onNewIteration(newIterationData);
+          setActiveTab('match');
+          
+        } else {
+          alert(`✅ Excellent! ΔE: ${deltaE.toFixed(2)} - Color match successful!\n\nThe AI has learned from this accurate result and will improve future predictions.`);
         }
-      } else {
-        alert(`✅ Excellent! ΔE: ${deltaE.toFixed(2)} - Color match successful!`);
+        
+      } catch (error) {
+        console.error('❌ Error in confirmation process:', error);
+        alert('❌ Error processing confirmation. Please try again.');
+      } finally {
+        setIsProcessing(false);
+        // Reset for next iteration or new color
+        setFinalLab([0, 0, 0]);
       }
-      
-      // Reset for next iteration or new color
-      setFinalLab([0, 0, 0]);
     };
 
     const deltaE = finalLab.some(v => v !== 0) ? ColorAlgorithms.deltaE00(currentResult.targetLab, finalLab) : 0;
@@ -1254,6 +1285,17 @@
           {currentResult.iteration && (
             <div className="mt-4 text-sm text-blue-600 font-medium">
               🔄 Iteration #{currentResult.iteration}
+              {currentResult.previousDeltaE && (
+                <span className="ml-2 text-gray-600">
+                  (Previous ΔE: {currentResult.previousDeltaE.toFixed(2)})
+                </span>
+              )}
+            </div>
+          )}
+          {currentResult.predictionDetails && (
+            <div className="mt-2 text-sm text-gray-600">
+              AI Method: {currentResult.predictionDetails.method} • 
+              Confidence: {Math.round(currentResult.predictionDetails.confidence)}%
             </div>
           )}
         </div>
@@ -1333,7 +1375,7 @@
                 : 'bg-yellow-600 text-white hover:bg-yellow-700'
             } ${(isProcessing || finalLab.every(v => v === 0)) ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            {isProcessing ? '🧠 AI Learning...' : 
+            {isProcessing ? '🧠 AI Learning & Generating Next Iteration...' : 
              isAccurate ? '✅ Confirm Success & Save' : '🔄 Learn & Suggest Next Iteration'}
           </button>
         </div>
@@ -1731,11 +1773,12 @@
     );
   }
 
-  // Main App Component
+  // CRITICAL: Main App Component with proper state management
   function App() {
     const aiModelRef = useRef(new AIColorModel());
     const [tab, setTab] = useState('match');
     const [rounds, setRounds] = useState([]);
+    const [nextIteration, setNextIteration] = useState(null);
 
     // Load saved data on startup
     useEffect(() => {
@@ -1750,13 +1793,18 @@
       setTab('confirm');
     };
 
+    const onNewIteration = (iterationData) => {
+      console.log('🔄 Setting next iteration data:', iterationData);
+      setNextIteration(iterationData);
+    };
+
     return (
       <div className="min-h-screen bg-slate-50">
         {/* Header */}
         <header className="bg-white shadow-sm border-b mb-6">
           <div className="max-w-6xl mx-auto px-4 py-4">
             <h1 className="text-3xl font-bold text-gray-900">
-              🎨 Color Matcher Pro – AI Enhanced 50 Patch System v2.1.6
+              🎨 Color Matcher Pro – AI Enhanced 50 Patch System v2.1.8
             </h1>
             <p className="text-sm text-gray-600 mt-1">
               Professional Color Management with Neural Network AI Learning
@@ -1768,8 +1816,23 @@
         <div className="max-w-6xl mx-auto px-4">
           <Tabs active={tab} onChange={setTab} />
           <div className="bg-white rounded-b-lg shadow-md min-h-[500px]">
-            {tab === 'match' && <ColorMatch aiModel={aiModelRef.current} onSuggest={onSuggest} />}
-            {tab === 'confirm' && <ConfirmResult aiModel={aiModelRef.current} rounds={rounds} setRounds={setRounds} />}
+            {tab === 'match' && (
+              <ColorMatch 
+                aiModel={aiModelRef.current} 
+                onSuggest={onSuggest} 
+                nextIteration={nextIteration}
+                setNextIteration={setNextIteration}
+              />
+            )}
+            {tab === 'confirm' && (
+              <ConfirmResult 
+                aiModel={aiModelRef.current} 
+                rounds={rounds} 
+                setRounds={setRounds} 
+                onNewIteration={onNewIteration}
+                setActiveTab={setTab}
+              />
+            )}
             {tab === 'cal' && <Calibration50 aiModel={aiModelRef.current} />}
             {tab === 'learn' && <AILearning aiModel={aiModelRef.current} />}
             {tab === 'hist' && <History rounds={rounds} />}
