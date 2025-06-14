@@ -956,10 +956,10 @@
             if (deltaE > 2) {
               const labDiff = originalLab.map((val, i) => val - printedLab[i]);
               const adjustment = [
-                -labDiff[1] * 0.3, // a* affects magenta/cyan
-                -labDiff[1] * 0.4, // a* primarily affects magenta
-                -labDiff[2] * 0.4, // b* affects yellow
-                -labDiff[0] * 0.3  // L* affects black
+                labDiff[1] * 0.3, // a* affects magenta/cyan
+                labDiff[1] * 0.4, // a* primarily affects magenta
+                labDiff[2] * 0.4, // b* affects yellow
+                labDiff[0] * 0.3  // L* affects black
               ];
               const suggested = cmykInput.map((val, i) => 
                 Math.max(0, Math.min(100, val + adjustment[i]))
