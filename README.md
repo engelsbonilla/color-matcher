@@ -49,9 +49,10 @@ for more reliable color matching.
 
 The `AIColorModel` accepts optional thresholds for ΔL, Δa and Δb when
 instantiated. These thresholds determine how sensitive the model is when
-converting LAB errors to CMYK adjustments. Starting with version 2.1.9 the
-defaults are **0** so every measured difference can influence the suggested
-CMYK values:
+converting LAB errors to CMYK adjustments. In version **2.1.8** the
+constructor defaults to **0.5** for each threshold so very small LAB
+differences are ignored by default. To account for every difference,
+override the thresholds to **0** when creating the model:
 
 ```javascript
 const ai = new AIColorModel({
