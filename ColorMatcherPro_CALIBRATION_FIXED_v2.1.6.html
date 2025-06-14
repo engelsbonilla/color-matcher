@@ -200,6 +200,10 @@
     { name: "Cream", cmyk: [3, 6, 15, 0] }
   ];
 
+  if (PATCHES.length !== 50) {
+    console.warn(`Expected 50 calibration patches, found ${PATCHES.length}`);
+  }
+
   // Enhanced AI Color Model with proper data flow
   class AIColorModel {
     constructor() {
@@ -1388,6 +1392,7 @@
     const [completedPatches, setCompletedPatches] = useState(new Set());
     const [selectedPatch, setSelectedPatch] = useState(null);
     const [labInput, setLabInput] = useState([0, 0, 0]);
+    const patchCountWarning = PATCHES.length !== 50;
 
     // Load saved calibration data on mount
     useEffect(() => {
@@ -1482,6 +1487,11 @@
           {completedPatches.size >= 10 && (
             <div className="mt-3 text-sm text-green-600 font-medium">
               🤖 AI Neural Network Active - Professional accuracy achieved!
+            </div>
+          )}
+          {patchCountWarning && (
+            <div className="mt-3 text-sm text-orange-600 font-medium">
+              ⚠️ Expected 50 calibration patches, found {PATCHES.length}
             </div>
           )}
         </div>
