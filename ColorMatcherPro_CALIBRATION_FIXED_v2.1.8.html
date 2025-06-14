@@ -525,45 +525,40 @@
         let predictedLab;
 
         if (this.neuralModel && this.modelStats.neuralNetworkActive) {
-            console.log('🧠 Using neural network for prediction');
-            const features = [
-              ...currentCmyk,
-              ...targetLab,
-              currentCmyk[0] + currentCmyk[1] + currentCmyk[2] + currentCmyk[3],
-              Math.abs(targetLab[1]) + Math.abs(targetLab[2])
-            ];
+          console.log('🧠 Using neural network for prediction');
+          const features = [
+            ...currentCmyk,
+            ...targetLab,
+            currentCmyk[0] + currentCmyk[1] + currentCmyk[2] + currentCmyk[3],
+            Math.abs(targetLab[1]) + Math.abs(targetLab[2])
+          ];
 
-            const input = tf.tensor2d([features]);
-            const prediction = this.neuralModel.predict(input);
-            const predictionData = await prediction.data();
-            predictedLab = Array.from(predictionData);
+          const input = tf.tensor2d([features]);
+          const prediction = this.neuralModel.predict(input);
+          const predictionData = await prediction.data();
+          predictedLab = Array.from(predictionData);
 
-            input.dispose();
-            prediction.dispose();
-          } else if (this.linearModel && this.linearModel.length === 3) {
-            console.log('📊 Using linear model for prediction');
-            // Use linear model fallback
-            const features = [
-              1, // bias
-              ...currentCmyk,
-              ...targetLab,
-              currentCmyk[0] * targetLab[0],
-              currentCmyk[1] * targetLab[1],
-              currentCmyk[2] * targetLab[2],
-              currentCmyk[3] * targetLab[0],
-              currentCmyk[0] * currentCmyk[0],
-              currentCmyk[1] * currentCmyk[1],
-              currentCmyk[2] * currentCmyk[2],
-              currentCmyk[3] * currentCmyk[3]
-            ];
+          input.dispose();
+          prediction.dispose();
+        } else if (this.linearModel && this.linearModel.length === 3) {
+          console.log('📊 Using linear model for prediction');
+          const features = [
+            1,
+            ...currentCmyk,
+            ...targetLab,
+            currentCmyk[0] * targetLab[0],
+            currentCmyk[1] * targetLab[1],
+            currentCmyk[2] * targetLab[2],
+            currentCmyk[3] * targetLab[0],
+            currentCmyk[0] * currentCmyk[0],
+            currentCmyk[1] * currentCmyk[1],
+            currentCmyk[2] * currentCmyk[2],
+            currentCmyk[3] * currentCmyk[3]
+          ];
 
-            predictedLab = this.linearModel.map(coeff =>
-              coeff.reduce((sum, c, i) => sum + c * (features[i] || 0), 0)
-            );
-          } else {
-            console.log('🎨 Using color theory fallback');
-            predictedLab = hasMeasurement ? [...printedLab] : [...targetLab];
-          }
+          predictedLab = this.linearModel.map(coeff =>
+            coeff.reduce((sum, c, i) => sum + c * (features[i] || 0), 0)
+          );
         } else if (hasMeasurement) {
           console.log('📏 Using measured LAB values for error calculation');
           predictedLab = [...printedLab];
@@ -1491,6 +1486,7 @@
     const [completedPatches, setCompletedPatches] = useState(new Set());
     const [selectedPatch, setSelectedPatch] = useState(null);
     const [labInput, setLabInput] = useState([0, 0, 0]);
+    const [rows, setRows] = useState(Array(PATCHES.length).fill(null));
     const patchCountWarning = PATCHES.length !== 50;
 
     // Load saved calibration data on mount
@@ -1519,6 +1515,13 @@
         console.log(`📊 Loaded ${completed.size} completed patches`);
       }
     }, [aiModel]);
+
+    // Trigger a final training pass when all patches are completed
+    useEffect(() => {
+      if (completedPatches.size === PATCHES.length) {
+        aiModel.trainModel();
+      }
+    }, [completedPatches, aiModel]);
 
     // Handle patch selection
     const handlePatchClick = (patchIndex) => {
@@ -1550,6 +1553,13 @@
       console.log(`💾 Saving patch ${selectedPatch}: ${patch.name} with LAB:`, labInput);
       
       try {
+        // Ensure patch LAB values land in the correct slot
+        setRows(prev => {
+          const updated = [...prev];
+          updated[selectedPatch] = [...labInput];
+          return updated;
+        });
+
         const success = aiModel.addCalibrationData(patch.cmyk, labInput);
         if (success) {
           setCompletedPatches(prev => new Set([...prev, selectedPatch]));
