@@ -560,22 +560,13 @@
             predictedLab = this.linearModel.map(coeff =>
               coeff.reduce((sum, c, i) => sum + c * (features[i] || 0), 0)
             );
+          } else if (hasMeasurement) {
+            console.log('📏 Using measured LAB values for error calculation');
+            predictedLab = [...printedLab];
           } else {
-            // No trained model available
-            if (hasMeasurement) {
-              console.log('📏 Using measured LAB values for error calculation');
-              predictedLab = [...printedLab];
-            } else {
-              console.log('🎨 Using color theory fallback');
-              predictedLab = [...targetLab];
-            }
+            console.log('🎨 Using color theory fallback');
+            predictedLab = [...targetLab];
           }
-        } else if (hasMeasurement) {
-          console.log('📏 Using measured LAB values for error calculation');
-          predictedLab = [...printedLab];
-        } else {
-          console.log('🎨 Using color theory fallback');
-          predictedLab = [...targetLab];
         }
 
         // Calculate LAB error using either prediction or measurement
