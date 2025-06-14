@@ -600,8 +600,8 @@
           const rawDelta = cmykAdjustment[i] * s;
           const unclamped = v + rawDelta;
           const final = clamp(unclamped, 0, 100);
-          console.log({index: i, rawDelta, unclamped, final});
-          return final;
+          console.log({ index: i, rawDelta, unclamped, final });
+          return Math.round(final);
         });
 
         const result = {
@@ -820,15 +820,17 @@
   }
 
   // Enhanced Number Input with negative support
-  const NumberInput = ({ value, onChange, min = -200, max = 200, step = 0.1, placeholder, className = "" }) => {
+  const NumberInput = ({ value, onChange, min = -200, max = 200, step = 0.1, placeholder, className = "", integer }) => {
     const handleKeyDown = (e) => {
       if (e.code === 'NumpadSubtract' || e.code === 'Minus') {
         e.preventDefault();
-        const currentValue = parseFloat(e.target.value) || 0;
+        const currentValue = integer ? (parseInt(e.target.value, 10) || 0)
+                                      : (parseFloat(e.target.value) || 0);
         onChange(-currentValue);
       } else if (e.code === 'NumpadAdd' || e.code === 'Plus') {
         e.preventDefault();
-        const currentValue = parseFloat(e.target.value) || 0;
+        const currentValue = integer ? (parseInt(e.target.value, 10) || 0)
+                                      : (parseFloat(e.target.value) || 0);
         onChange(Math.abs(currentValue));
       }
     };
@@ -837,11 +839,14 @@
       <input
         type="number"
         value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+        onChange={(e) => {
+          const val = integer ? parseInt(e.target.value, 10) : parseFloat(e.target.value);
+          onChange(isNaN(val) ? 0 : val);
+        }}
         onKeyDown={handleKeyDown}
         min={min}
         max={max}
-        step={step}
+        step={integer ? 1 : step}
         placeholder={placeholder}
         className={`number-input px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${className}`}
       />
@@ -977,7 +982,7 @@
               cmykInput
             );
             const dampened = result.suggested.map(
-              (v, i) => cmykInput[i] + (v - cmykInput[i]) * 0.5
+              (v, i) => Math.round(cmykInput[i] + (v - cmykInput[i]) * 0.5)
             );
             setSuggestedCmyk(dampened);
             setPredictionDetails(result);
@@ -1192,6 +1197,7 @@
                   min={0}
                   max={100}
                   placeholder="0-100"
+                  integer={true}
                   className="w-full"
                 />
               </div>
@@ -1219,10 +1225,10 @@
               <div key={color}>
                 <label className="block text-sm font-medium text-green-700 mb-2">{color} (%)</label>
                 <div className="px-3 py-2 bg-white border border-green-300 rounded-md text-center font-medium">
-                  {suggestedCmyk[index].toFixed(1)}
+                  {Math.round(suggestedCmyk[index])}
                   {predictionDetails && predictionDetails.adjustment && (
                     <div className="text-xs text-green-600 mt-1">
-                      {predictionDetails.adjustment[index] > 0 ? '+' : ''}{predictionDetails.adjustment[index].toFixed(1)}
+                      {predictionDetails.adjustment[index] > 0 ? '+' : ''}{Math.round(predictionDetails.adjustment[index])}
                     </div>
                   )}
                 </div>
@@ -1304,7 +1310,7 @@
           console.log('🤖 New AI suggestion generated:', newSuggestion);
 
           const dampened = newSuggestion.suggested.map(
-            (v, i) => currentResult.suggested[i] + (v - currentResult.suggested[i]) * 0.5
+            (v, i) => Math.round(currentResult.suggested[i] + (v - currentResult.suggested[i]) * 0.5)
           );
 
           // Create new iteration data for Color Match tab
@@ -1324,10 +1330,10 @@
           const improvementMessage = `🤖 AI has learned from this result and generated Iteration ${newIterationData.iteration}!\n\n` +
             `Previous Result: ΔE ${deltaE.toFixed(2)} (Target: ≤2.0)\n\n` +
             `NEW SUGGESTED CMYK VALUES:\n` +
-            `• Cyan: ${newSuggestion.suggested[0].toFixed(1)}% (${newSuggestion.adjustment[0] > 0 ? '+' : ''}${newSuggestion.adjustment[0].toFixed(1)})\n` +
-            `• Magenta: ${newSuggestion.suggested[1].toFixed(1)}% (${newSuggestion.adjustment[1] > 0 ? '+' : ''}${newSuggestion.adjustment[1].toFixed(1)})\n` +
-            `• Yellow: ${newSuggestion.suggested[2].toFixed(1)}% (${newSuggestion.adjustment[2] > 0 ? '+' : ''}${newSuggestion.adjustment[2].toFixed(1)})\n` +
-            `• Black: ${newSuggestion.suggested[3].toFixed(1)}% (${newSuggestion.adjustment[3] > 0 ? '+' : ''}${newSuggestion.adjustment[3].toFixed(1)})\n\n` +
+            `• Cyan: ${Math.round(newSuggestion.suggested[0])}% (${newSuggestion.adjustment[0] > 0 ? '+' : ''}${Math.round(newSuggestion.adjustment[0])})\n` +
+            `• Magenta: ${Math.round(newSuggestion.suggested[1])}% (${newSuggestion.adjustment[1] > 0 ? '+' : ''}${Math.round(newSuggestion.adjustment[1])})\n` +
+            `• Yellow: ${Math.round(newSuggestion.suggested[2])}% (${newSuggestion.adjustment[2] > 0 ? '+' : ''}${Math.round(newSuggestion.adjustment[2])})\n` +
+            `• Black: ${Math.round(newSuggestion.suggested[3])}% (${newSuggestion.adjustment[3] > 0 ? '+' : ''}${Math.round(newSuggestion.adjustment[3])})\n\n` +
             `AI Method: ${newSuggestion.method}\n` +
             `Confidence: ${Math.round(newSuggestion.confidence)}%\n\n` +
             `Switching to Color Match tab with new values...`;
@@ -1373,10 +1379,10 @@
             <div>
               <h4 className="font-medium text-gray-700 mb-2">Printed CMYK:</h4>
               <p className="text-sm bg-gray-100 p-2 rounded">
-                C: {currentResult.suggested[0].toFixed(1)}%, 
-                M: {currentResult.suggested[1].toFixed(1)}%, 
-                Y: {currentResult.suggested[2].toFixed(1)}%, 
-                K: {currentResult.suggested[3].toFixed(1)}%
+                C: {Math.round(currentResult.suggested[0])}%,
+                M: {Math.round(currentResult.suggested[1])}%,
+                Y: {Math.round(currentResult.suggested[2])}%,
+                K: {Math.round(currentResult.suggested[3])}%
               </p>
             </div>
           </div>
@@ -1853,7 +1859,7 @@
                 <strong>Target LAB:</strong> L:{round.targetLab[0].toFixed(1)}, a:{round.targetLab[1].toFixed(1)}, b:{round.targetLab[2].toFixed(1)}
               </div>
               <div>
-                <strong>Suggested CMYK:</strong> C:{round.suggested[0].toFixed(1)}, M:{round.suggested[1].toFixed(1)}, Y:{round.suggested[2].toFixed(1)}, K:{round.suggested[3].toFixed(1)}
+                <strong>Suggested CMYK:</strong> C:{Math.round(round.suggested[0])}, M:{Math.round(round.suggested[1])}, Y:{Math.round(round.suggested[2])}, K:{Math.round(round.suggested[3])}
               </div>
               {round.finalLab && (
                 <>
