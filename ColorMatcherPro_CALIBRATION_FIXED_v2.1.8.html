@@ -280,10 +280,8 @@
       // CRITICAL: Save immediately after each addition
       this.saveToStorage();
       
-      // Retrain when we have enough calibration data
-      if (this.calibrationData.length >= 5) {
-        this.trainModel();
-      }
+      // Retrain after every new calibration sample
+      this.trainModel();
       
       return true;
     }
@@ -359,7 +357,7 @@
         this.modelStats.totalSamples = allSamples.length;
         console.log(`🧠 Training on ${allSamples.length} samples (${this.calibrationData.length} calibration + ${this.learningData.length} learning)`);
 
-        if (allSamples.length >= 10) {
+        if (allSamples.length > 0) {
           await this.trainNeuralNetwork(allSamples);
           this.modelStats.neuralNetworkActive = true;
         }
