@@ -850,37 +850,39 @@
   };
 
   // Export function for calibration data
-  function exportCalibration() {
+  function exportCalibration(aiModel) {
     try {
       console.log('🔍 Starting export process...');
-      
-      // Read your entire saved blob from localStorage
-      const data = localStorage.getItem('colorMatcherAI');
-      if (!data) {
-        alert('❌ No calibration data found to export!');
+
+      if (!aiModel) {
+        alert('❌ AI model not available for export!');
         return;
       }
 
-      console.log('✅ Found calibration data in localStorage');
-      
-      // Parse and validate the data
-      const parsedData = JSON.parse(data);
+      const calibrationData = aiModel.calibrationData || [];
+      const learningData = aiModel.learningData || [];
+      const realWorldResults = aiModel.realWorldResults || [];
+      const modelStats = aiModel.getModelStats();
+
       console.log('📊 Export data summary:', {
-        calibrationPatches: parsedData.calibrationData?.length || 0,
-        learningIterations: parsedData.learningData?.length || 0,
-        realWorldResults: parsedData.realWorldResults?.length || 0
+        calibrationPatches: calibrationData.length,
+        learningIterations: learningData.length,
+        realWorldResults: realWorldResults.length
       });
 
       // Create enhanced export with metadata
       const exportData = {
-        ...parsedData,
+        calibrationData,
+        learningData,
+        realWorldResults,
+        modelStats,
         exportMetadata: {
           exportDate: new Date().toISOString(),
           version: '2.1.8',
           exportedBy: 'ColorMatcherPro',
-          totalCalibrationPatches: parsedData.calibrationData?.length || 0,
-          totalLearningIterations: parsedData.learningData?.length || 0,
-          totalRealWorldResults: parsedData.realWorldResults?.length || 0
+          totalCalibrationPatches: calibrationData.length,
+          totalLearningIterations: learningData.length,
+          totalRealWorldResults: realWorldResults.length
         }
       };
 
@@ -1603,7 +1605,7 @@
         {/* Export Button */}
         <div className="bg-white p-4 rounded-lg shadow-md border">
           <button
-            onClick={exportCalibration}
+            onClick={() => exportCalibration(aiModel)}
             className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors font-medium"
           >
             📤 Export Complete Backup
