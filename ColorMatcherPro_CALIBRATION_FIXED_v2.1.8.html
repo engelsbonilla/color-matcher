@@ -111,7 +111,8 @@
           suggested: suggestedCmyk,
           confidence: this.modelStats.confidence,
           method: this.modelStats.neuralNetworkActive ? 'Neural Network' : 'Linear Model',
-          labError, adjustment: cmykAdjustment
+          labError,
+          adjustment: cmykAdjustment
         };
 
         console.log('✅ Prediction completed:', result);
@@ -122,7 +123,7 @@
         return {
           suggested: [...currentCmyk],
           confidence: 0,
-          method: 'Fallback (error)',
+          method: 'Fallback',
           labError: [0,0,0],
           adjustment: [0,0,0,0]
         };
