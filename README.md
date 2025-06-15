@@ -37,6 +37,16 @@ tool can be run entirely in a modern web browser.
    provides the AI driven 50 patch calibration workflow where you can capture
    patches, refine color matches and export profiles.
 
+## Testing
+
+Run the Jest test suite with:
+
+```bash
+npm test
+```
+
+This command executes all tests in the `__tests__` directory.
+
 ## Purpose of `ColorMatcherPro_CALIBRATION_FIXED_v2.1.8.html`
 
 `ColorMatcherPro_CALIBRATION_FIXED_v2.1.8.html` is the main tool of this
