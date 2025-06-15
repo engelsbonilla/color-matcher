@@ -516,8 +516,8 @@
           try {
             baseCmyk = this.iccTransform.apply(targetLab);
             currentCmyk = baseCmyk;
-          } catch (e) {
-            console.warn('⚠️ ICC transform failed:', e);
+          } catch (innerErr) {
+            console.error('ICC transform inner error:', innerErr);
           }
         }
         // Always attempt to predict the printed LAB values
@@ -612,8 +612,8 @@
         console.log('✅ Prediction completed:', result);
         return result;
 
-      } catch (error) {
-        console.error('❌ Prediction error:', error);
+      } catch (err) {
+        console.error('Error in predictCMYKAdjustment:', err);
         return {
           suggested: [...currentCmyk],
           confidence: 0,
