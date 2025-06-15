@@ -68,4 +68,5 @@ Adjust these values if you want to dampen very small adjustments. Raising the th
 
 The project ships with an ESLint setup that checks HTML files using the
 `eslint-plugin-html` plugin. Run `npm install` to install the required
-development dependencies before invoking `npm run lint`.
+development dependencies such as Jest and ESLint before invoking
+`npm run lint` or `npm test`.
